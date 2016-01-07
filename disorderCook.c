@@ -528,7 +528,12 @@ ORDER * parse_order(int account, int qty, int price, int direction, int orderTyp
     ORDER * order;
     order = init_order(account, qty, price, direction, orderType);
     
-    run_order(order);
+    if (order->orderType != FOK)
+    {
+        run_order(order);
+    } else {
+        // Some stuff to deal with FOK orders
+    }
     
     if (order->direction == SELL)
     {
