@@ -194,7 +194,8 @@ def make_order(venue, symbol):
         
         raw_response = get_response_from_process(proc, message)
         
-        return raw_response     # FIXME
+        response.headers["Content-Type"] = "application/json"
+        return raw_response
         
     except Exception as e:
         response.status = 500
