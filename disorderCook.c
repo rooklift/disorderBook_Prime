@@ -1,3 +1,11 @@
+/* Crazy attempt to write the disorderBook backend in C.
+   The data layout stolen from DanielVF.
+   
+   We store all data in memory so that the user can retrieve it later via
+   yet-to-be-written functions. As such, there are very few free() calls.
+   
+   */
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
