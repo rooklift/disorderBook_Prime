@@ -577,6 +577,8 @@ int main(void)
     
 	char tokens[6][MAXTOKENSIZE];
     
+    char orderType_to_print[MAXTOKENSIZE];
+    
     while (1)
     {
         eofcheck = fgets(input, MAXINPUT, stdin);
@@ -603,7 +605,23 @@ int main(void)
         if (strcmp("ORDER", tokens[0]) == 0)
         {
             order = parse_order(atoi(tokens[1]), atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]));
-            printf("%d\n", order->totalFilled);     // FIXME
+            
+            if (order->orderType == LIMIT)
+            {
+                mod_strncpy(orderType_to_print, "limit", MAXTOKENSIZE);
+            } else if (order->orderType == MARKET) {
+                mod_strncpy(orderType_to_print, "market", MAXTOKENSIZE);
+            } else if (order->orderType == IOC) {
+                mod_strncpy(orderType_to_print, "immediate-or-cancel", MAXTOKENSIZE);
+            } else if (order->orderType == FOK) {
+                mod_strncpy(orderType_to_print, "fill-or-kill", MAXTOKENSIZE);
+            } else {
+                mod_strncpy(orderType_to_print, "unknown", MAXTOKENSIZE);
+            }
+            
+            printf("{\"ok\": true, \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s}\n",
+                    order->direction == 1 ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
+                    order->id, order->account, order->timestamp, order->totalFilled, order->open ? "true" : "false");
             fflush(stdout);
             continue;
         }
