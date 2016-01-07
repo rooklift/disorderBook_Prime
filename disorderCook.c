@@ -25,7 +25,7 @@
 typedef struct Fill_struct {
     int price;
     int qty;
-    char * timestamp;
+    char * ts;
 } FILL;
 
 typedef struct FillNode_struct {
@@ -35,7 +35,7 @@ typedef struct FillNode_struct {
 } FILLNODE;
 
 typedef struct Order_struct {
-    // char * venue;        // Frontend knows these so we don't need to
+    // char * venue;            // Stored elsewhere, don't need these
     // char * symbol;
     int direction;
     int originalQty;
@@ -43,8 +43,8 @@ typedef struct Order_struct {
     int price;
     int orderType;
     int id;
-    int account;            // Frontend will map from string to int
-    char * timestamp;
+    int account;                // Frontend will map from string to int
+    char * ts;
     struct FillNode_struct * firstfillnode;
     int totalFilled;
     int open;
@@ -93,7 +93,7 @@ LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
 }
 
 
-FILL * init_fill(int price, int qty, char * timestamp)
+FILL * init_fill(int price, int qty, char * ts)
 {
     FILL * ret;
     
@@ -102,7 +102,7 @@ FILL * init_fill(int price, int qty, char * timestamp)
     
     ret->price = price;
     ret->qty = qty;
-    ret->timestamp = timestamp;
+    ret->ts = ts;
     
     return ret;
 }
@@ -183,7 +183,7 @@ ORDER * init_order(int account, int qty, int price, int direction, int orderType
     ret->orderType = orderType;
     ret->id = new_id();
     ret->account = account;
-    ret->timestamp = new_timestamp();
+    ret->ts = new_timestamp();
     ret->firstfillnode = NULL;
     ret->totalFilled = 0;
     ret->open = 1;
@@ -198,11 +198,11 @@ void cross(ORDER * standing, ORDER * incoming)
 {
     int quantity;
     int price;
-    char * timestamp;
+    char * ts;
     FILLNODE * currentfillnode;
     FILL * fill;
     
-    timestamp = new_timestamp();
+    ts = new_timestamp();
     
     if (standing->qty < incoming->qty)
     {
@@ -218,11 +218,11 @@ void cross(ORDER * standing, ORDER * incoming)
     
     price = standing->price;
 
-    LastTradeTime = timestamp;
+    LastTradeTime = ts;
     LastPrice = price;
     LastSize = quantity;
     
-    fill = init_fill(price, quantity, timestamp);
+    fill = init_fill(price, quantity, ts);
     assert(fill);
 
     // Figure out where to put the fill...
@@ -618,11 +618,11 @@ int main(int argc, char ** argv)
                 mod_strncpy(orderType_to_print, "unknown", MAXTOKENSIZE);
             }
             
-            // FIXME: needs venue, symbol, fills
+            // FIXME: needs fills
             
             printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s}\n",
                     argv[1], argv[2], order->direction == 1 ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
-                    order->id, order->account, order->timestamp, order->totalFilled, order->open ? "true" : "false");
+                    order->id, order->account, order->ts, order->totalFilled, order->open ? "true" : "false");
             fflush(stdout);
             continue;
         }
