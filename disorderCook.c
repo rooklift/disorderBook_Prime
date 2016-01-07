@@ -11,13 +11,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define BUY 1
+#define BUY 1       // Don't change these now, they are also used in the frontend
 #define SELL 2
 
-#define LIMIT 1
+#define LIMIT 1     // Don't change these now, they are also used in the frontend
 #define MARKET 2
 #define FOK 3
 #define IOC 4
+
+#define MAXINPUT 2048
 
 typedef struct Fill_struct {
     int price;
@@ -565,5 +567,22 @@ ORDER * parse_order(int account, int qty, int price, int direction, int orderTyp
 int main(void)
 {
     // Some modifications here left as an exercise for the reader.
+    char * eofcheck;
+    char input[MAXINPUT];
+    
+    while (1)
+    {
+        eofcheck = fgets(input, MAXINPUT, stdin);
+        
+        if (eofcheck == NULL)	// i.e. we HAVE reached EOF
+        {
+            printf("Unexpected EOF on stdin. Quitting.\n");
+            return 1;
+        }
+        
+        printf("%s", input);
+        fflush(stdout);
+    }
+    
     return 0;
 }
