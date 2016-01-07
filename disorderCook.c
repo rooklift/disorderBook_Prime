@@ -565,9 +565,8 @@ ORDER * parse_order(int account, int qty, int price, int direction, int orderTyp
 }
 
 
-int main(void)
+int main(int argc, char ** argv)
 {
-    // Some modifications here left as an exercise for the reader.
     char * eofcheck;
     char * tmp;
     char input[MAXINPUT];
@@ -575,7 +574,7 @@ int main(void)
     int token_count;
     ORDER * order;
     
-	char tokens[6][MAXTOKENSIZE];
+    char tokens[6][MAXTOKENSIZE];
     
     char orderType_to_print[MAXTOKENSIZE];
     
@@ -583,7 +582,7 @@ int main(void)
     {
         eofcheck = fgets(input, MAXINPUT, stdin);
         
-        if (eofcheck == NULL)	       // i.e. we HAVE reached EOF
+        if (eofcheck == NULL)           // i.e. we HAVE reached EOF
         {
             printf("Unexpected EOF on stdin. Quitting.\n");
             return 1;
@@ -619,8 +618,10 @@ int main(void)
                 mod_strncpy(orderType_to_print, "unknown", MAXTOKENSIZE);
             }
             
-            printf("{\"ok\": true, \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s}\n",
-                    order->direction == 1 ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
+            // FIXME: needs venue, symbol, fills
+            
+            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s}\n",
+                    argv[1], argv[2], order->direction == 1 ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
                     order->id, order->account, order->timestamp, order->totalFilled, order->open ? "true" : "false");
             fflush(stdout);
             continue;

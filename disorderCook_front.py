@@ -66,7 +66,7 @@ def create_book_if_needed(venue, symbol):
         if opts.maxbooks > 0:
             if current_book_count + 1 > opts.maxbooks:
                 raise TooManyBooks
-        all_venues[venue][symbol] = subprocess.Popen('disorderCook.exe',
+        all_venues[venue][symbol] = subprocess.Popen(['disorderCook.exe', venue, symbol],
                                                      shell = False,
                                                      stdin = subprocess.PIPE,
                                                      stdout = subprocess.PIPE,
@@ -258,7 +258,7 @@ def main():
     if opts.accounts_file:
         create_auth_records()
     
-    print("disorderBook starting up...\n")
+    print("disorderCook starting up...\n")
     if not auth:
         print(" -----> Warning: running WITHOUT AUTHENTICATION! <-----\n")
     
