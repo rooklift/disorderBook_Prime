@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define BUY 1
 #define SELL 2
@@ -10,19 +11,19 @@
 #define FOK 3
 #define IOC 4
 
-struct Fill_struct {
+typedef struct Fill_struct {
     int price;
     int qty;
     char * timestamp;
 } FILL;
 
-struct FillNode_struct {
+typedef struct FillNode_struct {
     struct Fill_struct * fill;
     struct FillNode_struct * prev;
     struct FillNode_struct * next;
 } FILLNODE;
 
-struct Order_struct {
+typedef struct Order_struct {
     // char * venue;        // Frontend knows these so we don't need to
     // char * symbol;
     int direction;
@@ -38,13 +39,13 @@ struct Order_struct {
     int open;
 } ORDER;
 
-struct OrderNode_struct {
+typedef struct OrderNode_struct {
     struct Order_struct * order;
     struct OrderNode_struct * prev;
     struct OrderNode_struct * next;
 } ORDERNODE;
 
-struct Level_struct {
+typedef struct Level_struct {
     struct Level_struct * prev;
     struct Level_struct * next;
     int price;
@@ -149,6 +150,8 @@ char * new_timestamp(void)
     char * timestamp;
     
     timestamp = malloc(32);
+    assert(timestamp);
+    
     mod_strncpy(timestamp, "FIXME", 32);
     
     return timestamp;
@@ -186,8 +189,9 @@ void cross(ORDER * standing, ORDER * incoming)
     int price;
     char * timestamp;
     FILLNODE * currentfillnode;
+    FILL * fill;
     
-    timestamp = new_timestamp()
+    timestamp = new_timestamp();
     
     if (standing->qty < incoming->qty)
     {
@@ -259,7 +263,7 @@ void run_order(ORDER * order)
             current_node = current_level->firstordernode;
             while (current_node != NULL)
             {
-                cross(current_node->order, order;
+                cross(current_node->order, order);
                 if (order->open == 0) return;
                 current_node = current_node->next;
             }
@@ -273,7 +277,7 @@ void run_order(ORDER * order)
             current_node = current_level->firstordernode;
             while (current_node != NULL)
             {
-                cross(current_node->order, order;
+                cross(current_node->order, order);
                 if (order->open == 0) return;
                 current_node = current_node->next;
             }
@@ -361,7 +365,7 @@ void cleanup_closed_asks(void)      // This and the above could be consolidated 
             current_node = current_node->next;
             free(old_node);
         } else {
-            old_node = current_node
+            old_node = current_node;
             old_level = current_level;
             current_level = current_level->next;
             free(old_node);
@@ -381,19 +385,133 @@ void cleanup_closed_asks(void)      // This and the above could be consolidated 
 }
 
     
-void insert_ask(order)
+void insert_ask(ORDER * order)
 {
     ORDERNODE * ordernode;
+    ORDERNODE * current_node;
+    LEVEL * prev_level = NULL;
+    LEVEL * level;
+    LEVEL * newlevel;
     
-    ordernode = init_ordernode(order, NULL, NULL);      // Fix prev and next later
+    ordernode = init_ordernode(order, NULL, NULL);      // Fix ->prev later
     
     if (FirstAskLevel == NULL)
     {
         FirstAskLevel = init_level(order->price, ordernode, NULL, NULL);
         return;
+    } else {
+        level = FirstAskLevel;
     }
     
-    // in progress
+    while (1)
+    {
+        if (order->price < level->price)
+        {
+            // Create new level...
+            
+            init_level(order->price, ordernode, prev_level, level);
+            return;
+            
+        } else if (order->price == level->price) {
+            
+            break;
+            
+        } else {
+            
+            // Iterate...
+            
+            prev_level = level;
+            if (level->next != NULL)
+            {
+                level = level->next;
+            } else {
+                init_level(order->price, ordernode, prev_level, NULL);
+                return;
+            }
+        }
+    }
+    
+    // So we should be on the right level now
+    
+    assert(level->price == order->price);
+    
+    current_node = level->firstordernode;
+    assert(current_node != NULL);
+    
+    while (current_node->next != NULL)
+    {
+        current_node = current_node->next;
+    }
+    
+    current_node->next = ordernode;
+    ordernode->prev = current_node;
+    
+    return;
+}
+
+
+void insert_bid(ORDER * order)
+{
+    ORDERNODE * ordernode;
+    ORDERNODE * current_node;
+    LEVEL * prev_level = NULL;
+    LEVEL * level;
+    LEVEL * newlevel;
+    
+    ordernode = init_ordernode(order, NULL, NULL);      // Fix ->prev later
+    
+    if (FirstBidLevel == NULL)
+    {
+        FirstBidLevel = init_level(order->price, ordernode, NULL, NULL);
+        return;
+    } else {
+        level = FirstBidLevel;
+    }
+    
+    while (1)
+    {
+        if (order->price > level->price)
+        {
+            // Create new level...
+            
+            init_level(order->price, ordernode, prev_level, level);
+            return;
+            
+        } else if (order->price == level->price) {
+            
+            break;
+            
+        } else {
+            
+            // Iterate...
+            
+            prev_level = level;
+            if (level->next != NULL)
+            {
+                level = level->next;
+            } else {
+                init_level(order->price, ordernode, prev_level, NULL);
+                return;
+            }
+        }
+    }
+    
+    // So we should be on the right level now
+    
+    assert(level->price == order->price);
+    
+    current_node = level->firstordernode;
+    assert(current_node != NULL);
+    
+    while (current_node->next != NULL)
+    {
+        current_node = current_node->next;
+    }
+    
+    current_node->next = ordernode;
+    ordernode->prev = current_node;
+    
+    return;
 }
 
 
@@ -413,7 +531,7 @@ ORDER * parse_order(int account, int qty, int price, int direction, int orderTyp
     
     if (order->open)
     {
-        if (order->type == limit)
+        if (order->orderType == LIMIT)
         {
             if (order->direction == SELL)
             {
@@ -433,5 +551,6 @@ ORDER * parse_order(int account, int qty, int price, int direction, int orderTyp
 
 int main(void)
 {
+    // Some modifications here left as an exercise for the reader.
     return 0;
 }
