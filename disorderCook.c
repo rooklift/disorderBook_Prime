@@ -573,6 +573,7 @@ int main(void)
     char input[MAXINPUT];
     int n;
     int token_count;
+    ORDER * order;
     
 	char tokens[6][MAXTOKENSIZE];
     
@@ -599,13 +600,17 @@ int main(void)
             }
         }
         
-        for (n = 0; n < 6; n++)
+        if (strcmp("ORDER", tokens[0]) == 0)
         {
-            printf("%s ", tokens[n]);
+            order = parse_order(atoi(tokens[1]), atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]));
+            printf("%d\n", order->totalFilled);     // FIXME
+            fflush(stdout);
+            continue;
         }
-        printf("\n");
         
+        printf("Did not comprehend\n");
         fflush(stdout);
+        continue;
     }
     
     return 0;
