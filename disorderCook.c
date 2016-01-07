@@ -20,6 +20,7 @@
 #define IOC 4
 
 #define MAXINPUT 2048
+#define MAXTOKENSIZE 100
 
 typedef struct Fill_struct {
     int price;
@@ -568,19 +569,42 @@ int main(void)
 {
     // Some modifications here left as an exercise for the reader.
     char * eofcheck;
+    char * tmp;
     char input[MAXINPUT];
+    int n;
+    int token_count;
+    
+	char tokens[6][MAXTOKENSIZE];
     
     while (1)
     {
         eofcheck = fgets(input, MAXINPUT, stdin);
         
-        if (eofcheck == NULL)	// i.e. we HAVE reached EOF
+        if (eofcheck == NULL)	       // i.e. we HAVE reached EOF
         {
             printf("Unexpected EOF on stdin. Quitting.\n");
             return 1;
         }
         
-        printf("%s", input);
+        token_count = 0;
+        tmp = strtok(input, " \t\n\r");
+        for (n = 0; n < 6; n++)
+        {
+            tokens[n][0] = '\0';        // Clear the token in case there isn't one in this slot
+            if (tmp != NULL)
+            {
+                mod_strncpy(tokens[n], tmp, MAXTOKENSIZE);
+                token_count += 1;
+                tmp = strtok(NULL, " \t\n\r");
+            }
+        }
+        
+        for (n = 0; n < 6; n++)
+        {
+            printf("%s ", tokens[n]);
+        }
+        printf("\n");
+        
         fflush(stdout);
     }
     
