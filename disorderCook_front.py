@@ -140,9 +140,12 @@ def make_order(venue, symbol):
             account = data["account"]
             price = int(data["price"])
             qty = int(data["qty"])
-            orderType = data["orderType"]       # FIXME should also accept lowercase ordertype
+            if "orderType" in data:
+                orderType = data["orderType"]
+            else:
+                orderType = data["ordertype"]
             direction = data["direction"]
-        except KeyError as k:
+        except KeyError:
             response.status = 400
             return MISSING_FIELD
         except TypeError:
