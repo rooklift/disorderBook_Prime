@@ -937,6 +937,7 @@ int main(int argc, char ** argv)
                     {
                         break;
                     }
+                    ordernode = ordernode->next;
                 }
             }
             
