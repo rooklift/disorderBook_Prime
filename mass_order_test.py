@@ -37,7 +37,7 @@ while 1:
     direction = random.choice([1, 2])
     orderType = random.choice([1, 1, 1, 1, 2, 3, 4])
 
-    message = "ORDER {} {} {} {} {}".format(0, qty, price, direction, orderType)
+    message = "ORDER {} {} {} {} {} {}".format("EXB123456", 0, qty, price, direction, orderType)
     
     raw_response = get_response_from_process(proc, message)
     
