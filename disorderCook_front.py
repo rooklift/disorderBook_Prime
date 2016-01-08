@@ -34,6 +34,7 @@ MISSING_FIELD = {"ok": False, "error": "Incoming POST was missing required field
 URL_MISMATCH = {"ok": False, "error": "Incoming POST data disagreed with request URL"}
 BAD_TYPE = {"ok": False, "error": "A value in the POST had the wrong type"}
 BAD_VALUE = {"ok": False, "error": "Illegal value (usually a non-positive number)"}
+BAD_NAME = {"ok": False, "error": "Unacceptable length of account, venue, or symbol"}
 
 # ----------------------------------------------------------------------------------------
 
@@ -43,6 +44,10 @@ class TooManyBooks (Exception):
 
 
 class NoApiKey (Exception):
+    pass
+
+
+class BadName (Exception):
     pass
 
 
@@ -90,12 +95,31 @@ def get_response_from_process(proc, message):
     if not message.endswith("\n"):
         message += "\n"
     
-    b_message = bytes(message, encoding="ascii")
+    b_message = bytes(message, encoding = "ascii")
     
     proc.stdin.write(b_message)
     proc.stdin.flush()
     
-    return str(proc.stdout.readline(), encoding="ascii")
+    result = ""
+    
+    while 1:
+        line = str(proc.stdout.readline(), encoding = "ascii")
+        if line == ("END") or line == ("END\n") or line == ("END\r") or line == ("END\r\n"):
+            return result
+        else:
+            result += line
+        
+
+def validate_names(account = None, venue = None, symbol = None):
+    if account is not None:
+        if not 0 < len(account) < 20:
+            raise BadName
+    if venue is not None:
+        if not 0 < len(venue) < 20:
+            raise BadName
+    if symbol is not None:
+        if not 0 < len(symbol) < 20:
+            raise BadName
 
 
 # ----------------------------------------------------------------------------------------
@@ -151,6 +175,12 @@ def make_order(venue, symbol):
         except TypeError:
             response.status = 400
             return BAD_TYPE
+        
+        try:
+            validate_names(account, venue, symbol)
+        except BadName:
+            response.status = 400
+            return BAD_NAME
         
         if price < 0 or price > INT_MAX:
             response.status = 400
