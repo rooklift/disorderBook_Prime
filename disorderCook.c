@@ -83,7 +83,7 @@ LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
     LEVEL * ret;
     
     ret = malloc(sizeof(LEVEL));
-    assert(ret);
+    assert(ret != NULL);
     
     ret->price = price;
     ret->firstordernode = ordernode;
@@ -421,7 +421,14 @@ void insert_ask(ORDER * order)
         {
             // Create new level...
             
-            init_level(order->price, ordernode, prev_level, level);
+            newlevel = init_level(order->price, ordernode, prev_level, level);
+            level->prev = newlevel;
+            if (prev_level)
+            {
+                prev_level->next = newlevel;
+            } else {
+                FirstAskLevel = newlevel;
+            }
             return;
             
         } else if (order->price == level->price) {
@@ -437,7 +444,7 @@ void insert_ask(ORDER * order)
             {
                 level = level->next;
             } else {
-                init_level(order->price, ordernode, prev_level, NULL);
+                level->next = init_level(order->price, ordernode, prev_level, NULL);
                 return;
             }
         }
@@ -486,7 +493,14 @@ void insert_bid(ORDER * order)
         {
             // Create new level...
             
-            init_level(order->price, ordernode, prev_level, level);
+            newlevel = init_level(order->price, ordernode, prev_level, level);
+            level->prev = newlevel;
+            if (prev_level)
+            {
+                prev_level->next = newlevel;
+            } else {
+                FirstBidLevel = newlevel;
+            }
             return;
             
         } else if (order->price == level->price) {
@@ -502,7 +516,7 @@ void insert_bid(ORDER * order)
             {
                 level = level->next;
             } else {
-                init_level(order->price, ordernode, prev_level, NULL);
+                level->next = init_level(order->price, ordernode, prev_level, NULL);
                 return;
             }
         }
@@ -546,6 +560,11 @@ ORDER * parse_order(int account, int qty, int price, int direction, int orderTyp
         cleanup_closed_asks();
     }
     
+    if (order->orderType == MARKET)
+    {
+        order->price = 0;       // This is the official behaviour
+    }
+    
     if (order->open)
     {
         if (order->orderType == LIMIT)
@@ -568,7 +587,7 @@ ORDER * parse_order(int account, int qty, int price, int direction, int orderTyp
 
 void end_message(void)
 {
-    printf("END\n");
+    printf("\nEND\n");
     fflush(stdout);
     return;
 }
@@ -606,7 +625,10 @@ int main(int argc, char ** argv)
     char input[MAXINPUT];
     int n;
     int token_count;
+    int flag;
     ORDER * order;
+    LEVEL * level;
+    ORDERNODE * ordernode;
     
     char tokens[MAXTOKENS][MAXTOKENSIZE];
     
@@ -636,6 +658,8 @@ int main(int argc, char ** argv)
             }
         }
         
+        // ---------------------------------------------- ORDER ----------------------------------------------------------
+        
         if (strcmp("ORDER", tokens[0]) == 0)
         {
             order = parse_order(atoi(tokens[1]), atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]));
@@ -663,6 +687,50 @@ int main(int argc, char ** argv)
             
             print_fills(order);
             printf("}\n");
+            
+            end_message();
+            continue;
+        }
+        
+        // -------------------------------------- ORDER BOOK -------------------------------------------------------------
+        
+        if (strcmp("ORDERBOOK", tokens[0]) == 0)
+        {
+            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"FIXME\", ", argv[1], argv[2]);
+            
+            printf("\"asks\": [");
+            level = FirstAskLevel;
+            flag = 0;
+            while (level != NULL)
+            {
+                ordernode = level->firstordernode;
+                while (ordernode != NULL)
+                {
+                    if (flag) printf(", \n");
+                    printf("{\"price\": %d, \"qty\": %d, \"isBuy\": false}", ordernode->order->price, ordernode->order->qty);
+                    flag = 1;
+                    ordernode = ordernode->next;
+                }
+                level = level->next;
+            }
+            printf("], ");
+            
+            printf("\"bids\": [");
+            level = FirstBidLevel;
+            flag = 0;
+            while (level != NULL)
+            {
+                ordernode = level->firstordernode;
+                while (ordernode != NULL)
+                {
+                    if (flag) printf(", \n");
+                    printf("{\"price\": %d, \"qty\": %d, \"isBuy\": true}", ordernode->order->price, ordernode->order->qty);
+                    flag = 1;
+                    ordernode = ordernode->next;
+                }
+                level = level->next;
+            }
+            printf("]}");
             
             end_message();
             continue;

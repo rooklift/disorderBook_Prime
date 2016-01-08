@@ -104,7 +104,7 @@ def get_response_from_process(proc, message):
     
     while 1:
         line = str(proc.stdout.readline(), encoding = "ascii")
-        if line == ("END") or line == ("END\n") or line == ("END\r") or line == ("END\r\n"):
+        if line.strip() == ("END"):         # line ending with \r\n has been observed to happen
             return result
         else:
             result += line
@@ -236,6 +236,34 @@ def make_order(venue, symbol):
 
 # ----------------------------------------------------------------------------------------
 
+@route("/ob/api/venues/<venue>/stocks/<symbol>", "GET")
+def orderbook(venue, symbol):
+
+    try:
+        validate_names(None, venue, symbol)
+    except BadName:
+        response.status = 400
+        return BAD_NAME
+
+    try:
+        create_book_if_needed(venue, symbol)
+    except TooManyBooks:
+        response.status = 400
+        return BOOK_ERROR
+
+    # Now call the process and get a response...
+    
+    try:
+    
+        proc = all_venues[venue][symbol]
+        raw_response = get_response_from_process(proc, "ORDERBOOK")
+        response.headers["Content-Type"] = "application/json"
+        return raw_response
+    except Exception as e:
+        response.status = 500
+        return dict_from_exception(e)
+
+# ----------------------------------------------------------------------------------------
 
 def create_auth_records():
     global auth
