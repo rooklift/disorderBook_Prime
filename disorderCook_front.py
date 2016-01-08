@@ -1,4 +1,8 @@
-# Modified disorderBook_main.py for use with the C backend. Work in progress...
+# TODO:
+#
+# Add quote
+# Add status all orders
+# Add status all orders one stock
 
 import json
 import optparse
@@ -9,7 +13,7 @@ try:
 except ImportError:
     from bottle_0_12_9 import request, response, route, run     # copy in our repo
 
-# ----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------
 
 INT_MAX = 2147483647
 MAXORDERS = 2000000000
@@ -24,7 +28,7 @@ auth = dict()
 direction_ints = {"buy": 1, "sell": 2}
 orderType_ints = {"limit": 1, "market": 2, "fill-or-kill": 3, "fok": 3, "immediate-or-cancel": 4, "ioc": 4}
 
-# ----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------
 
 BAD_JSON = {"ok": False, "error": "Incoming data was not valid JSON"}
 BOOK_ERROR = {"ok": False, "error": "Book limit exceeded! (See command line options)"}
@@ -39,7 +43,7 @@ BAD_VALUE = {"ok": False, "error": "Illegal value (usually a non-positive number
 BAD_NAME = {"ok": False, "error": "Unacceptable length of account, venue, or symbol"}
 TOO_MANY_ACCOUNTS = {"ok": False, "error": "Maximum number of accounts exceeded"}
 
-# ----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------
 
 
 class TooManyBooks (Exception):
@@ -125,8 +129,44 @@ def validate_names(account = None, venue = None, symbol = None):        # If not
             raise BadName
 
 
-# ----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------
 
+@route("/ob/api/heartbeat", "GET")
+def heartbeat():
+    return {"ok": True, "error": ""}
+
+# -------------------------------------------------------------------------------------------------------------
+    
+@route("/ob/api/venues", "GET")
+def venue_list():
+    ret = dict()
+    ret["ok"] = True
+    ret["venues"] = [{"name": v + " Exchange", "venue": v, "state": "open"} for v in all_venues]
+    return ret
+
+# -------------------------------------------------------------------------------------------------------------
+    
+@route("/ob/api/venues/<venue>/heartbeat", "GET")
+def venue_heartbeat(venue):
+    if venue in all_venues:
+        return {"ok": True, "venue": venue}
+    else:
+        response.status = 404
+        return {"ok": False, "error": "Venue {} does not exist (create it by using it)".format(venue)}
+
+# -------------------------------------------------------------------------------------------------------------
+        
+@route("/ob/api/venues/<venue>", "GET")
+@route("/ob/api/venues/<venue>/stocks", "GET")
+def stocklist(venue):
+    if venue in all_venues:
+        return {"ok": True, "symbols": [{"symbol": symbol, "name": symbol + " Inc"} for symbol in all_venues[venue]]}
+    else:
+        response.status = 404
+        return {"ok": False, "error": "Venue {} does not exist (create it by using it)".format(venue)}
+
+# -------------------------------------------------------------------------------------------------------------
+        
 @route("/ob/api/venues/<venue>/stocks/<symbol>/orders", "POST")
 def make_order(venue, symbol):
 
@@ -240,7 +280,7 @@ def make_order(venue, symbol):
         response.status = 500
         return dict_from_exception(e)
 
-# ----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------
 
 @route("/ob/api/venues/<venue>/stocks/<symbol>", "GET")
 def orderbook(venue, symbol):
@@ -269,7 +309,7 @@ def orderbook(venue, symbol):
         response.status = 500
         return dict_from_exception(e)
 
-# ----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------
 
 @route("/ob/api/venues/<venue>/stocks/<symbol>/orders/<id>", "GET")
 def status(venue, symbol, id):
@@ -324,7 +364,7 @@ def status(venue, symbol, id):
     response.headers["Content-Type"] = "application/json"
     return raw_response
 
-# ----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------
 
 @route("/ob/api/venues/<venue>/stocks/<symbol>/orders/<id>", "DELETE")
 @route("/ob/api/venues/<venue>/stocks/<symbol>/orders/<id>/cancel", "POST")
@@ -379,7 +419,7 @@ def cancel(venue, symbol, id):
     response.headers["Content-Type"] = "application/json"
     return raw_response
 
-# ----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------
 
 
 def create_auth_records():
