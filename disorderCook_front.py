@@ -113,9 +113,9 @@ def get_response_from_process(proc, message):
             result += line
         
 
-def validate_names(account = None, venue = None, symbol = None):
-    if account is not None:
-        if not 0 < len(account) < 20:
+def validate_names(account = None, venue = None, symbol = None):        # If nothing else, these
+    if account is not None:                                             # things should be below
+        if not 0 < len(account) < 20:                                   # the C var MAXTOKENSIZE
             raise BadName
     if venue is not None:
         if not 0 < len(venue) < 20:
@@ -228,7 +228,7 @@ def make_order(venue, symbol):
 
         # Now call the process and get a response...
         
-        message = "ORDER {} {} {} {} {}".format(account_ints[account], qty, price, direction_ints[direction], orderType_ints[orderType])
+        message = "ORDER {} {} {} {} {} {}".format(account, account_ints[account], qty, price, direction_ints[direction], orderType_ints[orderType])
         proc = all_venues[venue][symbol]
         
         raw_response = get_response_from_process(proc, message)

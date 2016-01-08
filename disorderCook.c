@@ -22,7 +22,7 @@
 #define MAXINPUT 2048
 #define MAXTOKENSIZE 100
 #define MAXTOKENS 50                // Well-behaved frontend will never send this many
-#define MAXACCOUNTS 2048
+
 #define MAXORDERS 2000000000        // Not going all the way to MAX_INT, because various numbers might go above this
                   
 #define TOO_MANY_ORDERS 1
@@ -40,16 +40,18 @@ typedef struct FillNode_struct {
     struct FillNode_struct * next;
 } FILLNODE;
 
+typedef struct AccountName_struct {             // It's easier to think about pointers to structs
+    char name[MAXTOKENSIZE];                    // that have strings, than pointers to strings.
+} ACCOUNT;
+
 typedef struct Order_struct {
-    // char * venue;            // Stored elsewhere, don't need these
-    // char * symbol;
     int direction;
     int originalQty;
     int qty;
     int price;
     int orderType;
     int id;
-    int account;                // Frontend will map from string to int
+    struct AccountName_struct * account;
     char * ts;
     struct FillNode_struct * firstfillnode;
     int totalFilled;
@@ -91,8 +93,11 @@ int LastSize = -1;
 
 ORDER ** AllOrders = NULL;
 int CurrentOrderArrayLen = 0;
-
 int HighestKnownOrder = -1;
+
+ACCOUNT ** AllAccounts = NULL;
+int CurrentAccountArrayLen = 0;
+int HighestKnownAccount = -1;
 
 
 
@@ -219,7 +224,7 @@ char * new_timestamp(void)
 }
 
 
-ORDER * init_order(int account, int qty, int price, int direction, int orderType, int id)
+ORDER * init_order(ACCOUNT * account, int qty, int price, int direction, int orderType, int id)
 {
     ORDER * ret;
     
@@ -616,13 +621,32 @@ void insert_bid(ORDER * order)
 }
 
 
-ORDER_AND_ERROR * parse_order(int account, int qty, int price, int direction, int orderType)
+ACCOUNT * init_account(char * name)
 {
+    ACCOUNT * ret;
+    
+    ret = malloc(sizeof(ACCOUNT));
+    check_ram_or_die(ret);
+    
+    mod_strncpy(ret->name, name, MAXTOKENSIZE);
+    
+    return ret;
+}
+
+
+ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int price, int direction, int orderType)
+{
+    // Note: account_name will be in the stack of the calling function, not in the heap
+    
     ORDER * order;
     ORDER_AND_ERROR * o_and_e;
+    ACCOUNT * account;
+    
     int id;
     
     o_and_e = init_o_and_e();
+    
+    // Check for too high an order ID...
     
     id = next_id(0);
     if (id >= MAXORDERS)
@@ -631,9 +655,23 @@ ORDER_AND_ERROR * parse_order(int account, int qty, int price, int direction, in
         return o_and_e;
     }
     
-    order = init_order(account, qty, price, direction, orderType, id);
+    // Check if account_int is unknown, in which case create an account struct to hold its name.
+    // Also extend the array of all known accounts if needed.
     
+    if (account_int > HighestKnownAccount)
+    {
+        if (account_int >= CurrentAccountArrayLen)
+        {
+            AllAccounts = realloc(AllAccounts, (CurrentAccountArrayLen + 1024) * sizeof(ACCOUNT *));
+            check_ram_or_die(AllAccounts);
+            CurrentAccountArrayLen += 1024;
+        }
+        AllAccounts[account_int] = init_account(account_name);
+    }
     
+    // Create order struct...
+    
+    order = init_order(AllAccounts[account_int], qty, price, direction, orderType, id);
     
     if (order->orderType != FOK)
     {
@@ -719,12 +757,123 @@ void print_order(ORDER * order)
         mod_strncpy(orderType_to_print, "unknown", MAXTOKENSIZE);
     }
     
-    printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
+    printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
             Venue, Symbol, order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
-            order->id, order->account, order->ts, order->totalFilled, order->open ? "true" : "false");
+            order->id, order->account->name, order->ts, order->totalFilled, order->open ? "true" : "false");
     
     print_fills(order);
     printf("}");
+    
+    return;
+}
+
+
+LEVEL * find_level(int price, int dir)      // Return ptr to level, or return NULL if not present
+{
+    LEVEL * level = NULL;
+            
+    if (dir == BUY)
+    {
+        level = FirstBidLevel;
+        while (level != NULL)
+        {
+            if (level->price > price)
+            {
+                level = level->next;
+            } else if (level->price == price) {
+                break;
+            } else {
+                level = NULL;
+                break;
+            }
+        }
+    } else {
+        level = FirstAskLevel;
+        while (level != NULL)
+        {
+            if (level->price < price)
+            {
+                level = level->next;
+            } else if (level->price == price) {
+                break;
+            } else {
+                level = NULL;
+                break;
+            }
+        }
+    }
+    
+    return level;
+}
+
+
+ORDERNODE * find_ordernode(LEVEL * level, int id)
+{
+    ORDERNODE * ordernode;
+    
+    if (level)
+    {
+        ordernode = level->firstordernode;
+        assert(ordernode != NULL);
+        
+        while (ordernode != NULL)
+        {
+            if (ordernode->order->id == id)
+            {
+                return ordernode;
+            }
+            ordernode = ordernode->next;
+        }
+    }
+    
+    return NULL;
+}
+
+
+void destroy_and_relink(ORDERNODE * ordernode, LEVEL * level)       // Free the ordernode, maybe free the level, fix all links
+{
+    int dir;
+    
+    assert(ordernode && level);
+    
+    dir = ordernode->order->direction;                  // Needed later
+    
+    
+    if (ordernode->prev)
+    {
+        ordernode->prev->next = ordernode->next;
+    } else {
+        level->firstordernode = ordernode->next;        // Can set level->firstordernode to NULL, in which case
+    }                                                   // the level is now empty and must be destroyed in a bit
+    
+    if (ordernode->next)
+    {
+        ordernode->next->prev = ordernode->prev;
+    }
+    
+    free(ordernode);
+    
+    if (level->firstordernode == NULL)
+    {
+        if (level->prev)
+        {
+            level->prev->next = level->next;
+        } else {
+            if (dir == BUY)
+            {
+                FirstBidLevel = level->next;
+            } else {
+                FirstAskLevel = level->next;
+            }
+        }
+        
+        if (level->next)
+        {
+            level->next->prev = level->prev;
+        }
+        
+        free(level);
+    }
     
     return;
 }
@@ -750,8 +899,6 @@ int main(int argc, char ** argv)
     int id;
     int dir;
     int orderType;
-    
-
     
     assert(argc == 3);
     
@@ -786,7 +933,8 @@ int main(int argc, char ** argv)
         
         if (strcmp("ORDER", tokens[0]) == 0)
         {
-            o_and_e = parse_order(atoi(tokens[1]), atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]));
+            o_and_e = parse_order(tokens[1], atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]), atoi(tokens[6]));
+            //                    account    account_int      qty              price            direction        orderType
             
             if (o_and_e->error)
             {
@@ -874,120 +1022,34 @@ int main(int argc, char ** argv)
                 continue;
             }
             
-            price = AllOrders[id]->price;
-            dir = AllOrders[id]->direction;
             orderType = AllOrders[id]->orderType;
             
-            if (orderType != LIMIT)             // Everything else is auto-cancelled after running
+            if (orderType != LIMIT)                     // Everything else is auto-cancelled after running
             {
                 print_order(AllOrders[id]);
                 end_message();
                 continue;
             }
+
+            price = AllOrders[id]->price;
+            dir = AllOrders[id]->direction;
             
-            // First, find the correct level... (I should write a function just for this).
-            // If we can't find the level, set the level ptr to NULL.
+            // Find the level then the ordernode, if possible...
             
-            level = NULL;
+            level = find_level(price, dir);
+            ordernode = find_ordernode(level, id);      // This is safe even if level == NULL
             
-            if (dir == BUY)
-            {
-                level = FirstBidLevel;
-                while (level != NULL)
-                {
-                    if (level->price > price)
-                    {
-                        level = level->next;
-                    } else if (level->price == price) {
-                        break;
-                    } else {
-                        level = NULL;
-                        break;
-                    }
-                }
-            } else {
-                level = FirstAskLevel;
-                while (level != NULL)
-                {
-                    if (level->price < price)
-                    {
-                        level = level->next;
-                    } else if (level->price == price) {
-                        break;
-                    } else {
-                        level = NULL;
-                        break;
-                    }
-                }
-            }
-            
-            // Find the ordernode, or set the ptr to NULL if not present.
-            
-            ordernode = NULL;
-            
-            if (level)
-            {
-                assert(level->price == price);
-                ordernode = level->firstordernode;
-                assert(ordernode != NULL);
-                
-                while (ordernode != NULL)
-                {
-                    if (ordernode->order->id == id)
-                    {
-                        break;
-                    }
-                }
-            }
-            
-            // Now do the linked-list fiddling...
+            // Now close the order and do the linked-list fiddling...
             
             if (ordernode)
             {
-                assert(ordernode->order->id == id);
-                
                 ordernode->order->open = 0;
                 ordernode->order->qty = 0;
                 
-                if (ordernode->prev)
-                {
-                    ordernode->prev->next = ordernode->next;
-                } else {
-                    level->firstordernode = ordernode->next;        // Can set level->firstordernode to NULL, fixed later
-                }
-                
-                if (ordernode->next)
-                {
-                    ordernode->next->prev = ordernode->prev;
-                }
-                
-                free(ordernode);
-                
-                if (level->firstordernode == NULL)
-                {
-                    if (level->prev)
-                    {
-                        level->prev->next = level->next;
-                    } else {
-                        if (dir == BUY)
-                        {
-                            FirstBidLevel = level->next;
-                        } else {
-                            FirstAskLevel = level->next;
-                        }
-                    }
-                    
-                    if (level->next)
-                    {
-                        level->next->prev = level->prev;
-                    }
-                    
-                    free(level);
-                }
+                destroy_and_relink(ordernode, level);   // Frees the node and even the level if needed; fixes links
             }
             
             print_order(AllOrders[id]);
-            
             end_message();
             continue;
         }
