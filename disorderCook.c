@@ -390,7 +390,9 @@ void cleanup_closed_bids(void)
         if (current_node->order->open)
         {
             current_level->firstordernode = current_node;
+            current_node->prev = NULL;
             FirstBidLevel = current_level;
+            FirstBidLevel->prev = NULL;
             return;
         }
         
@@ -438,7 +440,9 @@ void cleanup_closed_asks(void)      // This and the above could be consolidated 
         if (current_node->order->open)
         {
             current_level->firstordernode = current_node;
+            current_node->prev = NULL;
             FirstAskLevel = current_level;
+            FirstAskLevel->prev = NULL;
             return;
         }
         
@@ -731,14 +735,23 @@ int main(int argc, char ** argv)
     char * eofcheck;
     char * tmp;
     char input[MAXINPUT];
-    int n;
+    char tokens[MAXTOKENS][MAXTOKENSIZE];
     int token_count;
+    
+    // The following are all general-purpose vars to be used wherever needed, they don't store long-term info
+    
+    int n;
     int flag;
     ORDER * order;
     ORDER_AND_ERROR * o_and_e;
     LEVEL * level;
     ORDERNODE * ordernode;
-    char tokens[MAXTOKENS][MAXTOKENSIZE];
+    int price;
+    int id;
+    int dir;
+    int orderType;
+    
+
     
     assert(argc == 3);
     
@@ -840,15 +853,145 @@ int main(int argc, char ** argv)
         
         if (strcmp("STATUS", tokens[0]) == 0)
         {
-            n = atoi(tokens[1]);
-            if (n < 0 || n > HighestKnownOrder)
+            id = atoi(tokens[1]);
+            if (id < 0 || id > HighestKnownOrder)
             {
                 printf("{\"ok\": false, \"error\": \"No such ID\"}");
                 end_message();
                 continue;
             }
             
-            print_order(AllOrders[n]);
+            print_order(AllOrders[id]);
+            
+            end_message();
+            continue;
+        }
+        
+        // ---------------------------------------- CANCEL ---------------------------------------------------------------
+        
+        if (strcmp("CANCEL", tokens[0]) == 0)
+        {
+            id = atoi(tokens[1]);
+            if (id < 0 || id > HighestKnownOrder)
+            {
+                printf("{\"ok\": false, \"error\": \"No such ID\"}");
+                end_message();
+                continue;
+            }
+            
+            price = AllOrders[id]->price;
+            dir = AllOrders[id]->direction;
+            orderType = AllOrders[id]->orderType;
+            
+            if (orderType != LIMIT)             // Everything else is auto-cancelled after running
+            {
+                print_order(AllOrders[id]);
+                end_message();
+                continue;
+            }
+            
+            // First, find the correct level... (I should write a function just for this).
+            // If we can't find the level, set the level ptr to NULL.
+            
+            level = NULL;
+            
+            if (dir == BUY)
+            {
+                level = FirstBidLevel;
+                while (level != NULL)
+                {
+                    if (level->price > price)
+                    {
+                        level = level->next;
+                    } else if (level->price == price) {
+                        break;
+                    } else {
+                        level = NULL;
+                        break;
+                    }
+                }
+            } else {
+                level = FirstAskLevel;
+                while (level != NULL)
+                {
+                    if (level->price < price)
+                    {
+                        level = level->next;
+                    } else if (level->price == price) {
+                        break;
+                    } else {
+                        level = NULL;
+                        break;
+                    }
+                }
+            }
+            
+            // Find the ordernode, or set the ptr to NULL if not present.
+            
+            ordernode = NULL;
+            
+            if (level)
+            {
+                assert(level->price == price);
+                ordernode = level->firstordernode;
+                assert(ordernode != NULL);
+                
+                while (ordernode != NULL)
+                {
+                    if (ordernode->order->id == id)
+                    {
+                        break;
+                    }
+                }
+            }
+            
+            // Now do the linked-list fiddling...
+            
+            if (ordernode)
+            {
+                assert(ordernode->order->id == id);
+                
+                ordernode->order->open = 0;
+                ordernode->order->qty = 0;
+                
+                if (ordernode->prev)
+                {
+                    ordernode->prev->next = ordernode->next;
+                } else {
+                    level->firstordernode = ordernode->next;        // Can set level->firstordernode to NULL, fixed later
+                }
+                
+                if (ordernode->next)
+                {
+                    ordernode->next->prev = ordernode->prev;
+                }
+                
+                free(ordernode);
+                
+                if (level->firstordernode == NULL)
+                {
+                    if (level->prev)
+                    {
+                        level->prev->next = level->next;
+                    } else {
+                        if (dir == BUY)
+                        {
+                            FirstBidLevel = level->next;
+                        } else {
+                            FirstAskLevel = level->next;
+                        }
+                    }
+                    
+                    if (level->next)
+                    {
+                        level->next->prev = level->prev;
+                    }
+                    
+                    free(level);
+                }
+            }
+            
+            print_order(AllOrders[id]);
             
             end_message();
             continue;

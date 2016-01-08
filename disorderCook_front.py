@@ -283,6 +283,7 @@ def status(venue, symbol, id):
         return BAD_NAME
     
     if id < 0 or id > MAXORDERS - 1:
+        response.status = 400
         return BAD_VALUE
     
     try:
@@ -296,6 +297,41 @@ def status(venue, symbol, id):
     try:
         proc = all_venues[venue][symbol]
         raw_response = get_response_from_process(proc, "STATUS {}".format(id))
+        response.headers["Content-Type"] = "application/json"
+        return raw_response
+
+    except Exception as e:
+        response.status = 500
+        return dict_from_exception(e)
+
+# ----------------------------------------------------------------------------------------
+
+@route("/ob/api/venues/<venue>/stocks/<symbol>/orders/<id>", "DELETE")
+@route("/ob/api/venues/<venue>/stocks/<symbol>/orders/<id>/cancel", "POST")
+def cancel(venue, symbol, id):
+
+    id = int(id)
+    
+    try:
+        validate_names(None, venue, symbol)
+    except BadName:
+        response.status = 400
+        return BAD_NAME
+    
+    if id < 0 or id > MAXORDERS - 1:
+        return BAD_VALUE
+
+    try:
+        create_book_if_needed(venue, symbol)
+    except TooManyBooks:
+        response.status = 400
+        return BOOK_ERROR
+    
+    # FIXME: needs authentication
+    
+    try:
+        proc = all_venues[venue][symbol]
+        raw_response = get_response_from_process(proc, "CANCEL {}".format(id))
         response.headers["Content-Type"] = "application/json"
         return raw_response
 
