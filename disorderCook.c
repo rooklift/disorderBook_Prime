@@ -830,7 +830,7 @@ ORDERNODE * find_ordernode(LEVEL * level, int id)
 }
 
 
-void destroy_and_relink(ORDERNODE * ordernode, LEVEL * level)       // Free the ordernode, maybe free the level, fix all links
+void cleanup_after_cancel(ORDERNODE * ordernode, LEVEL * level)       // Free the ordernode, maybe free the level, fix all links
 {
     int dir;
     
@@ -1046,10 +1046,27 @@ int main(int argc, char ** argv)
                 ordernode->order->open = 0;
                 ordernode->order->qty = 0;
                 
-                destroy_and_relink(ordernode, level);   // Frees the node and even the level if needed; fixes links
+                cleanup_after_cancel(ordernode, level);   // Frees the node and even the level if needed; fixes links
             }
             
             print_order(AllOrders[id]);
+            end_message();
+            continue;
+        }
+        
+        // ------------------------------ FRONT-END REQUEST FOR ACCOUNT OF ORDER -----------------------------------------
+        
+        if (strcmp("__ACC_FROM_ID__", tokens[0]) == 0)
+        {
+            id = atoi(tokens[1]);
+            if (id < 0 || id > HighestKnownOrder)
+            {
+                printf("ERROR None");
+                end_message();
+                continue;
+            }
+            
+            printf("OK %s", AllOrders[id]->account->name);
             end_message();
             continue;
         }

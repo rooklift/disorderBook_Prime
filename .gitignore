@@ -1,13 +1,16 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 
-# Some stuff in the project directory for convenience
+# TCC in the project directory for convenience
 include/
 lib/
 tcc.exe
 tiny_impdef.exe
 tiny_libmaker.exe
 
-
 # The compiled binary:
 disorderCook.exe
+
+# Other files:
+disorderCook_with_auth.bat
+accounts.json

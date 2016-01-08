@@ -292,17 +292,37 @@ def status(venue, symbol, id):
         response.status = 400
         return BOOK_ERROR
     
-    # FIXME: needs authentication
+    # Authentication step requires querying the backend for account of the order...
     
-    try:
-        proc = all_venues[venue][symbol]
-        raw_response = get_response_from_process(proc, "STATUS {}".format(id))
-        response.headers["Content-Type"] = "application/json"
-        return raw_response
+    proc = all_venues[venue][symbol]
 
-    except Exception as e:
-        response.status = 500
-        return dict_from_exception(e)
+    ls = get_response_from_process(proc, "__ACC_FROM_ID__ {}".format(id)).split()
+    
+    if ls[0] == "ERROR":
+        response.status = 400
+        return NO_SUCH_ORDER
+    else:
+        account = ls[1]
+
+    if auth:
+    
+        try:
+            apikey = api_key_from_headers(request.headers)
+        except NoApiKey:
+            response.status = 401
+            return NO_AUTH_ERROR
+    
+        if account not in auth:
+            response.status = 401
+            return AUTH_WEIRDFAIL
+
+        if auth[account] != apikey:
+            response.status = 401
+            return AUTH_FAILURE
+    
+    raw_response = get_response_from_process(proc, "STATUS {}".format(id))
+    response.headers["Content-Type"] = "application/json"
+    return raw_response
 
 # ----------------------------------------------------------------------------------------
 
@@ -327,17 +347,37 @@ def cancel(venue, symbol, id):
         response.status = 400
         return BOOK_ERROR
     
-    # FIXME: needs authentication
+    # Authentication step requires querying the backend for account of the order...
     
-    try:
-        proc = all_venues[venue][symbol]
-        raw_response = get_response_from_process(proc, "CANCEL {}".format(id))
-        response.headers["Content-Type"] = "application/json"
-        return raw_response
+    proc = all_venues[venue][symbol]
 
-    except Exception as e:
-        response.status = 500
-        return dict_from_exception(e)
+    ls = get_response_from_process(proc, "__ACC_FROM_ID__ {}".format(id)).split()
+    
+    if ls[0] == "ERROR":
+        response.status = 400
+        return NO_SUCH_ORDER
+    else:
+        account = ls[1]
+
+    if auth:
+    
+        try:
+            apikey = api_key_from_headers(request.headers)
+        except NoApiKey:
+            response.status = 401
+            return NO_AUTH_ERROR
+    
+        if account not in auth:
+            response.status = 401
+            return AUTH_WEIRDFAIL
+
+        if auth[account] != apikey:
+            response.status = 401
+            return AUTH_FAILURE
+    
+    raw_response = get_response_from_process(proc, "CANCEL {}".format(id))
+    response.headers["Content-Type"] = "application/json"
+    return raw_response
 
 # ----------------------------------------------------------------------------------------
 
