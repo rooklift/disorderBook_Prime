@@ -640,7 +640,7 @@ int main(int argc, char ** argv)
         
         if (eofcheck == NULL)           // i.e. we HAVE reached EOF
         {
-            printf("{\"ok\": false, \"error\": \"Unexpected EOF on stdin. Quitting.\"}\n");
+            printf("{\"ok\": false, \"error\": \"Unexpected EOF on stdin. Quitting.\"}");
             end_message();
             return 1;
         }
@@ -677,16 +677,12 @@ int main(int argc, char ** argv)
                 mod_strncpy(orderType_to_print, "unknown", MAXTOKENSIZE);
             }
             
-            // FIXME: needs fills
-            // Also, there's a danger with fills that the pipe buffer overflows, creating deadlock.
-            // Could return them one line at a time. Would need modification to frontend.
-            
             printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
                     argv[1], argv[2], order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
                     order->id, order->account, order->ts, order->totalFilled, order->open ? "true" : "false");
             
             print_fills(order);
-            printf("}\n");
+            printf("}");
             
             end_message();
             continue;
@@ -696,7 +692,7 @@ int main(int argc, char ** argv)
         
         if (strcmp("ORDERBOOK", tokens[0]) == 0)
         {
-            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"FIXME\", ", argv[1], argv[2]);
+            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"FIXME\",\n", argv[1], argv[2]);
             
             printf("\"asks\": [");
             level = FirstAskLevel;
@@ -713,7 +709,7 @@ int main(int argc, char ** argv)
                 }
                 level = level->next;
             }
-            printf("], ");
+            printf("],\n");
             
             printf("\"bids\": [");
             level = FirstBidLevel;
@@ -736,7 +732,7 @@ int main(int argc, char ** argv)
             continue;
         }
         
-        printf("\"ok\": false, \"error\": \"Did not comprehend\"}\n");
+        printf("\"ok\": false, \"error\": \"Did not comprehend\"}");
         end_message();
         continue;
     }
