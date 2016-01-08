@@ -791,16 +791,11 @@ int main(int argc, char ** argv)
             if (o_and_e->error)
             {
                 printf("{\"ok\": false, \"error\": \"Backend error %d\"}", o_and_e->error);
-                end_message();
-                free(o_and_e);
-                continue;
             } else {
-                order = o_and_e->order;
-                free(o_and_e);
+                print_order(o_and_e->order);
             }
             
-            print_order(order);
-
+            free(o_and_e);
             end_message();
             continue;
         }
