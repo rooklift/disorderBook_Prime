@@ -922,6 +922,7 @@ int main(int argc, char ** argv)
     int id;
     int dir;
     int orderType;
+    char * ts;
     
     assert(argc == 3);
     
@@ -975,7 +976,9 @@ int main(int argc, char ** argv)
         
         if (strcmp("ORDERBOOK", tokens[0]) == 0)
         {
-            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"FIXME\",\n", Venue, Symbol);
+            ts = new_timestamp();
+            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"%s\",\n", Venue, Symbol, ts);
+            free(ts);
             
             printf("\"asks\": [");
             level = FirstAskLevel;
