@@ -1,15 +1,22 @@
-/* Crazy attempt to write the disorderBook backend in C.
-   The data layout stolen from DanielVF.
+/*  Crazy attempt to write the disorderBook backend in C.
+    The data layout stolen from DanielVF.
    
-   We store all data in memory so that the user can retrieve it later via
-   yet-to-be-written functions. As such, there are very few free() calls.
+    We store all data in memory so that the user can retrieve it later via
+    yet-to-be-written functions. As such, there are very few free() calls.
    
-   */
+    The front end has many responsibilities:
+   
+        Authentication
+        Validating POST input
+        Sending queries to us in the correct format
+        Correctly reading our responses
+    */
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define BUY 1       // Don't change these now, they are also used in the frontend
 #define SELL 2
@@ -214,11 +221,27 @@ char * mod_strncpy(char * s1, const char * s2, int max)
 char * new_timestamp(void)
 {
     char * timestamp;
+    time_t t;
+    struct tm * ti;
     
-    timestamp = malloc(32);
+    timestamp = malloc(64);
     check_ram_or_die(timestamp);
     
-    mod_strncpy(timestamp, "FIXME", 32);
+    t = time(NULL);
+    
+    if (t != (time_t) -1)
+    {
+        ti = gmtime(&t);
+    } else {
+        ti = NULL;
+    }
+    
+    if (ti)
+    {
+        sprintf(timestamp, "%d-%02d-%02dT%02d:%02d:%02d.0000Z", ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday, ti->tm_hour, ti->tm_min, ti->tm_sec);
+    } else {
+        sprintf(timestamp, "Unknown");
+    }
     
     return timestamp;
 }
