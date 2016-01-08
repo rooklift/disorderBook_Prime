@@ -21,6 +21,7 @@
 
 #define MAXINPUT 2048
 #define MAXTOKENSIZE 100
+#define MAXTOKENS 50        // Well-behaved frontend will never send this many
 
 typedef struct Fill_struct {
     int price;
@@ -239,7 +240,7 @@ void cross(ORDER * standing, ORDER * incoming)
         currentfillnode->next = init_fillnode(fill, currentfillnode, NULL);
     }
     
-    // Again for other otder...
+    // Again for other order...
     
     if (incoming->firstfillnode == NULL)
     {
@@ -565,6 +566,39 @@ ORDER * parse_order(int account, int qty, int price, int direction, int orderTyp
 }
 
 
+void end_message(void)
+{
+    printf("END\n");
+    fflush(stdout);
+    return;
+}
+
+
+void print_fills(ORDER * order)
+{
+    FILLNODE * fillnode;
+    
+    if (order->firstfillnode == NULL)   // Can do without this block but it's uglier
+    {
+        printf("\"fills\": []");
+        return;
+    }
+    
+    printf("\"fills\": [\n");
+    
+    fillnode = order->firstfillnode;
+    
+    while (fillnode != NULL)
+    {
+        if (fillnode != order->firstfillnode) printf(",\n");
+        printf("{\"price\": %d, \"qty\": %d, \"ts\": \"%s\"}", fillnode->fill->price, fillnode->fill->qty, fillnode->fill->ts);
+        fillnode = fillnode->next;
+    }
+    
+    printf("\n]");
+    return;
+}
+
 int main(int argc, char ** argv)
 {
     char * eofcheck;
@@ -574,7 +608,7 @@ int main(int argc, char ** argv)
     int token_count;
     ORDER * order;
     
-    char tokens[6][MAXTOKENSIZE];
+    char tokens[MAXTOKENS][MAXTOKENSIZE];
     
     char orderType_to_print[MAXTOKENSIZE];
     
@@ -584,13 +618,14 @@ int main(int argc, char ** argv)
         
         if (eofcheck == NULL)           // i.e. we HAVE reached EOF
         {
-            printf("Unexpected EOF on stdin. Quitting.\n");
+            printf("{\"ok\": false, \"error\": \"Unexpected EOF on stdin. Quitting.\"}\n");
+            end_message();
             return 1;
         }
         
         token_count = 0;
         tmp = strtok(input, " \t\n\r");
-        for (n = 0; n < 6; n++)
+        for (n = 0; n < MAXTOKENS; n++)
         {
             tokens[n][0] = '\0';        // Clear the token in case there isn't one in this slot
             if (tmp != NULL)
@@ -619,16 +654,22 @@ int main(int argc, char ** argv)
             }
             
             // FIXME: needs fills
+            // Also, there's a danger with fills that the pipe buffer overflows, creating deadlock.
+            // Could return them one line at a time. Would need modification to frontend.
             
-            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s}\n",
-                    argv[1], argv[2], order->direction == 1 ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
+            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
+                    argv[1], argv[2], order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
                     order->id, order->account, order->ts, order->totalFilled, order->open ? "true" : "false");
-            fflush(stdout);
+            
+            print_fills(order);
+            printf("}\n");
+            
+            end_message();
             continue;
         }
         
-        printf("Did not comprehend\n");
-        fflush(stdout);
+        printf("\"ok\": false, \"error\": \"Did not comprehend\"}\n");
+        end_message();
         continue;
     }
     
