@@ -12,6 +12,8 @@ except ImportError:
 # ----------------------------------------------------------------------------------------
 
 INT_MAX = 2147483647
+MAXORDERS = 2000000000
+MAXACCOUNTS = 2048
 
 all_venues = dict()         # dict: venue string ---> dict: stock string ---> PIPE
 account_ints = dict()       # dict: account string ---> unique int
@@ -35,6 +37,7 @@ URL_MISMATCH = {"ok": False, "error": "Incoming POST data disagreed with request
 BAD_TYPE = {"ok": False, "error": "A value in the POST had the wrong type"}
 BAD_VALUE = {"ok": False, "error": "Illegal value (usually a non-positive number)"}
 BAD_NAME = {"ok": False, "error": "Unacceptable length of account, venue, or symbol"}
+TOO_MANY_ACCOUNTS = {"ok": False, "error": "Maximum number of accounts exceeded"}
 
 # ----------------------------------------------------------------------------------------
 
@@ -123,7 +126,6 @@ def validate_names(account = None, venue = None, symbol = None):
 
 
 # ----------------------------------------------------------------------------------------
-
 
 @route("/ob/api/venues/<venue>/stocks/<symbol>/orders", "POST")
 def make_order(venue, symbol):
@@ -218,7 +220,11 @@ def make_order(venue, symbol):
                 return AUTH_FAILURE
         
         if account not in account_ints:
-            account_ints[account] = len(account_ints)
+            if len(account_ints) < MAXACCOUNTS:
+                account_ints[account] = len(account_ints)
+            else:
+                response.status = 500
+                return TOO_MANY_ACCOUNTS
 
         # Now call the process and get a response...
         
@@ -264,6 +270,41 @@ def orderbook(venue, symbol):
         return dict_from_exception(e)
 
 # ----------------------------------------------------------------------------------------
+
+@route("/ob/api/venues/<venue>/stocks/<symbol>/orders/<id>", "GET")
+def status(venue, symbol, id):
+    
+    id = int(id)
+    
+    try:
+        validate_names(None, venue, symbol)
+    except BadName:
+        response.status = 400
+        return BAD_NAME
+    
+    if id < 0 or id > MAXORDERS - 1:
+        return BAD_VALUE
+    
+    try:
+        create_book_if_needed(venue, symbol)
+    except TooManyBooks:
+        response.status = 400
+        return BOOK_ERROR
+    
+    # FIXME: needs authentication
+    
+    try:
+        proc = all_venues[venue][symbol]
+        raw_response = get_response_from_process(proc, "STATUS {}".format(id))
+        response.headers["Content-Type"] = "application/json"
+        return raw_response
+
+    except Exception as e:
+        response.status = 500
+        return dict_from_exception(e)
+
+# ----------------------------------------------------------------------------------------
+
 
 def create_auth_records():
     global auth

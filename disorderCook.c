@@ -21,7 +21,12 @@
 
 #define MAXINPUT 2048
 #define MAXTOKENSIZE 100
-#define MAXTOKENS 50        // Well-behaved frontend will never send this many
+#define MAXTOKENS 50                // Well-behaved frontend will never send this many
+#define MAXACCOUNTS 2048
+#define MAXORDERS 2000000000        // Not going all the way to MAX_INT, because various numbers might go above this
+                  
+#define TOO_MANY_ORDERS 1
+
 
 typedef struct Fill_struct {
     int price;
@@ -64,9 +69,17 @@ typedef struct Level_struct {
     struct OrderNode_struct * firstordernode;
 } LEVEL;
 
+typedef struct OrderPtrAndError_struct {
+    struct Order_struct * order;
+    int error;
+} ORDER_AND_ERROR;
+
 
 // Globals......
 
+
+char Venue[MAXTOKENSIZE];
+char Symbol[MAXTOKENSIZE];
 
 LEVEL * FirstBidLevel = NULL;
 LEVEL * FirstAskLevel = NULL;
@@ -76,6 +89,31 @@ char * LastTradeTime = NULL;
 int LastPrice = -1;
 int LastSize = -1;
 
+ORDER ** AllOrders = NULL;
+int CurrentOrderArrayLen = 0;
+
+int HighestKnownOrder = -1;
+
+
+
+void end_message(void)
+{
+    printf("\nEND\n");
+    fflush(stdout);
+    return;
+}
+
+
+void check_ram_or_die(void * ptr)
+{
+    if (ptr == NULL)
+    {
+        printf("{\"ok\": false, \"error\": \"Out of memory! Quitting\"}");
+        end_message();
+        assert(ptr);
+    }
+    return;
+}
 
 
 LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
@@ -83,7 +121,7 @@ LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
     LEVEL * ret;
     
     ret = malloc(sizeof(LEVEL));
-    assert(ret != NULL);
+    check_ram_or_die(ret);
     
     ret->price = price;
     ret->firstordernode = ordernode;
@@ -99,7 +137,7 @@ FILL * init_fill(int price, int qty, char * ts)
     FILL * ret;
     
     ret = malloc(sizeof(FILL));
-    assert(ret);
+    check_ram_or_die(ret);
     
     ret->price = price;
     ret->qty = qty;
@@ -114,7 +152,7 @@ FILLNODE * init_fillnode(FILL * fill, FILLNODE * prev, FILLNODE * next)
     FILLNODE * ret;
     
     ret = malloc(sizeof(FILLNODE));
-    assert(ret);
+    check_ram_or_die(ret);
     
     ret->fill = fill;
     ret->prev = prev;
@@ -129,7 +167,7 @@ ORDERNODE * init_ordernode(ORDER * order, ORDERNODE * prev, ORDERNODE * next)
     ORDERNODE * ret;
     
     ret = malloc(sizeof(ORDERNODE));
-    assert(ret);
+    check_ram_or_die(ret);
     
     ret->order = order;
     ret->prev = prev;
@@ -139,10 +177,21 @@ ORDERNODE * init_ordernode(ORDER * order, ORDERNODE * prev, ORDERNODE * next)
 }
 
 
-int new_id(void)
+int next_id(int no_iterate_flag)
 {
     static int id = 0;
-    return id++;
+    
+    if (id == MAXORDERS)         // Stop iterating
+    {
+        return MAXORDERS;
+    } else {
+        if (no_iterate_flag)
+        {
+            return id;
+        } else {
+            return id++;
+        }
+    }
 }
 
 
@@ -162,7 +211,7 @@ char * new_timestamp(void)
     char * timestamp;
     
     timestamp = malloc(32);
-    assert(timestamp);
+    check_ram_or_die(timestamp);
     
     mod_strncpy(timestamp, "FIXME", 32);
     
@@ -170,29 +219,52 @@ char * new_timestamp(void)
 }
 
 
-ORDER * init_order(int account, int qty, int price, int direction, int orderType)
+ORDER * init_order(int account, int qty, int price, int direction, int orderType, int id)
 {
     ORDER * ret;
     
     ret = malloc(sizeof(ORDER));
-    assert(ret);
+    check_ram_or_die(ret);
     
     ret->direction = direction;
     ret->originalQty = qty;
     ret->qty = qty;
     ret->price = price;
     ret->orderType = orderType;
-    ret->id = new_id();
+    ret->id = id;
     ret->account = account;
     ret->ts = new_timestamp();
     ret->firstfillnode = NULL;
     ret->totalFilled = 0;
     ret->open = 1;
 
+    // Now deal with the global order storage...
+    
+    if (id >= CurrentOrderArrayLen)
+    {
+        AllOrders = realloc(AllOrders, (CurrentOrderArrayLen + 8192) * sizeof(ORDER *));
+        check_ram_or_die(AllOrders);
+        CurrentOrderArrayLen += 8192;
+    }
+    AllOrders[id] = ret;
+    HighestKnownOrder = id;
+    
     return ret;
 }
 
 
+ORDER_AND_ERROR * init_o_and_e()
+{
+    ORDER_AND_ERROR * ret;
+    
+    ret = malloc(sizeof(ORDER_AND_ERROR));
+    check_ram_or_die(ret);
+    
+    ret->order = NULL;
+    ret->error = 0;
+    
+    return ret;
+}
 
 
 void cross(ORDER * standing, ORDER * incoming)
@@ -224,7 +296,6 @@ void cross(ORDER * standing, ORDER * incoming)
     LastSize = quantity;
     
     fill = init_fill(price, quantity, ts);
-    assert(fill);
 
     // Figure out where to put the fill...
     
@@ -541,10 +612,24 @@ void insert_bid(ORDER * order)
 }
 
 
-ORDER * parse_order(int account, int qty, int price, int direction, int orderType)
+ORDER_AND_ERROR * parse_order(int account, int qty, int price, int direction, int orderType)
 {
     ORDER * order;
-    order = init_order(account, qty, price, direction, orderType);
+    ORDER_AND_ERROR * o_and_e;
+    int id;
+    
+    o_and_e = init_o_and_e();
+    
+    id = next_id(0);
+    if (id >= MAXORDERS)
+    {
+        o_and_e->error = TOO_MANY_ORDERS;
+        return o_and_e;
+    }
+    
+    order = init_order(account, qty, price, direction, orderType, id);
+    
+    
     
     if (order->orderType != FOK)
     {
@@ -581,15 +666,9 @@ ORDER * parse_order(int account, int qty, int price, int direction, int orderTyp
         }
     }
     
-    return order;
-}
-
-
-void end_message(void)
-{
-    printf("\nEND\n");
-    fflush(stdout);
-    return;
+    o_and_e->order = order;
+    
+    return o_and_e;
 }
 
 
@@ -618,6 +697,35 @@ void print_fills(ORDER * order)
     return;
 }
 
+
+void print_order(ORDER * order)
+{
+    char orderType_to_print[MAXTOKENSIZE];
+    
+    if (order->orderType == LIMIT)
+    {
+        mod_strncpy(orderType_to_print, "limit", MAXTOKENSIZE);
+    } else if (order->orderType == MARKET) {
+        mod_strncpy(orderType_to_print, "market", MAXTOKENSIZE);
+    } else if (order->orderType == IOC) {
+        mod_strncpy(orderType_to_print, "immediate-or-cancel", MAXTOKENSIZE);
+    } else if (order->orderType == FOK) {
+        mod_strncpy(orderType_to_print, "fill-or-kill", MAXTOKENSIZE);
+    } else {
+        mod_strncpy(orderType_to_print, "unknown", MAXTOKENSIZE);
+    }
+    
+    printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
+            Venue, Symbol, order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
+            order->id, order->account, order->ts, order->totalFilled, order->open ? "true" : "false");
+    
+    print_fills(order);
+    printf("}");
+    
+    return;
+}
+
+
 int main(int argc, char ** argv)
 {
     char * eofcheck;
@@ -627,12 +735,15 @@ int main(int argc, char ** argv)
     int token_count;
     int flag;
     ORDER * order;
+    ORDER_AND_ERROR * o_and_e;
     LEVEL * level;
     ORDERNODE * ordernode;
-    
     char tokens[MAXTOKENS][MAXTOKENSIZE];
     
-    char orderType_to_print[MAXTOKENSIZE];
+    assert(argc == 3);
+    
+    mod_strncpy(Venue, argv[1], MAXTOKENSIZE);
+    mod_strncpy(Symbol, argv[2], MAXTOKENSIZE);
     
     while (1)
     {
@@ -662,28 +773,21 @@ int main(int argc, char ** argv)
         
         if (strcmp("ORDER", tokens[0]) == 0)
         {
-            order = parse_order(atoi(tokens[1]), atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]));
+            o_and_e = parse_order(atoi(tokens[1]), atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]));
             
-            if (order->orderType == LIMIT)
+            if (o_and_e->error)
             {
-                mod_strncpy(orderType_to_print, "limit", MAXTOKENSIZE);
-            } else if (order->orderType == MARKET) {
-                mod_strncpy(orderType_to_print, "market", MAXTOKENSIZE);
-            } else if (order->orderType == IOC) {
-                mod_strncpy(orderType_to_print, "immediate-or-cancel", MAXTOKENSIZE);
-            } else if (order->orderType == FOK) {
-                mod_strncpy(orderType_to_print, "fill-or-kill", MAXTOKENSIZE);
+                printf("{\"ok\": false, \"error\": \"Backend error %d\"}", o_and_e->error);
+                end_message();
+                free(o_and_e);
+                continue;
             } else {
-                mod_strncpy(orderType_to_print, "unknown", MAXTOKENSIZE);
+                order = o_and_e->order;
+                free(o_and_e);
             }
             
-            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%d\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
-                    argv[1], argv[2], order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
-                    order->id, order->account, order->ts, order->totalFilled, order->open ? "true" : "false");
-            
-            print_fills(order);
-            printf("}");
-            
+            print_order(order);
+
             end_message();
             continue;
         }
@@ -692,7 +796,7 @@ int main(int argc, char ** argv)
         
         if (strcmp("ORDERBOOK", tokens[0]) == 0)
         {
-            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"FIXME\",\n", argv[1], argv[2]);
+            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"FIXME\",\n", Venue, Symbol);
             
             printf("\"asks\": [");
             level = FirstAskLevel;
@@ -732,7 +836,27 @@ int main(int argc, char ** argv)
             continue;
         }
         
-        printf("\"ok\": false, \"error\": \"Did not comprehend\"}");
+        // -------------------------------------- ORDER STATUS -----------------------------------------------------------
+        
+        if (strcmp("STATUS", tokens[0]) == 0)
+        {
+            n = atoi(tokens[1]);
+            if (n < 0 || n > HighestKnownOrder)
+            {
+                printf("{\"ok\": false, \"error\": \"No such ID\"}");
+                end_message();
+                continue;
+            }
+            
+            print_order(AllOrders[n]);
+            
+            end_message();
+            continue;
+        }
+        
+        // ---------------------------------------------------------------------------------------------------------------
+        
+        printf("{\"ok\": false, \"error\": \"Did not comprehend\"}");
         end_message();
         continue;
     }
