@@ -3,14 +3,35 @@
    
     We store all data in memory so that the user can retrieve it later via
     yet-to-be-written functions. As such, there are very few free() calls.
-   
+
+
+    PROTOCOL:
+    
     We don't handle user input directly. The frontend is responsible for
     sending us commands as single lines. Only the ORDER command is tricky:
     
-    ORDER CES365413 5 100 5000 1 1\n
+    ORDER <account> <account_id> <qty> <price> <dir:1|2> <orderType:1|2|3|4>
     
-    Each account should be given a unique, low non-negative integer as an id (RAM is allocated based on these,
-    so keep them as low as possible. If there are 
+    e.g.
+    
+    ORDER CES134127  5            100   5000    1         3
+    
+    The frontend must give each account a unique, low, non-negative integer as
+    an id (RAM is allocated based on these, so keep them as low as possible).
+    
+    Numbers for direction and orderType are defined below.
+    
+    Other commands:
+    
+    ORDERBOOK
+    CANCEL <id>
+    STATUS <id>
+    __ACC_FROM_ID__ <id>
+    
+    This last is not a direct response to a user query, but can be used by the
+    frontend for authentication purposes (i.e. is the user entitled to cancel
+    this order?)
+    
     
     */
 
@@ -49,7 +70,7 @@ typedef struct FillNode_struct {
     struct FillNode_struct * next;
 } FILLNODE;
 
-typedef struct Account_struct {         // This might hold more than just a name at some point
+typedef struct Account_struct {
     char name[MAXTOKENSIZE];
     struct Order_struct ** orders;
     int arraylen;
@@ -89,7 +110,23 @@ typedef struct OrderPtrAndError_struct {
 } ORDER_AND_ERROR;
 
 
-// Globals......
+
+typedef struct DebugInfo_struct {
+    int inits_of_level;
+    int inits_of_fill;
+    int inits_of_fillnode;
+    int inits_of_order;
+    int inits_of_ordernode;
+    int inits_of_account;
+    
+    int reallocs_of_global_order_list;
+    int reallocs_of_global_account_list;
+    int reallocs_of_account_order_list;
+} DEBUG_INFO;
+    
+
+
+// ---------------------------------- GLOBALS -----------------------------------------------
 
 
 char Venue[MAXTOKENSIZE];
@@ -112,8 +149,11 @@ int HighestKnownOrder = -1;
 
 ACCOUNT ** AllAccounts = NULL;
 int CurrentAccountArrayLen = 0;
-int HighestKnownAccount = -1;
 
+DEBUG_INFO DebugInfo = {0};     // Think global is auto-zeroed anyway, but whatever
+
+
+// ------------------------------------------------------------------------------------------
 
 
 void end_message(void)
@@ -136,13 +176,11 @@ void check_ptr_or_quit(void * ptr)
 }
 
 
-int LEVEL_INITS = 0;
-
 LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
 {
     LEVEL * ret;
     
-    LEVEL_INITS++;
+    DebugInfo.inits_of_level++;
     
     ret = malloc(sizeof(LEVEL));
     check_ptr_or_quit(ret);
@@ -156,13 +194,11 @@ LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
 }
 
 
-int FILL_INITS = 0;
-
 FILL * init_fill(int price, int qty, char * ts)
 {
     FILL * ret;
     
-    FILL_INITS++;
+    DebugInfo.inits_of_fill++;
     
     ret = malloc(sizeof(FILL));
     check_ptr_or_quit(ret);
@@ -175,13 +211,11 @@ FILL * init_fill(int price, int qty, char * ts)
 }
 
 
-int FILLNODE_INITS = 0;
-
 FILLNODE * init_fillnode(FILL * fill, FILLNODE * prev, FILLNODE * next)
 {
     FILLNODE * ret;
     
-    FILLNODE_INITS++;
+    DebugInfo.inits_of_fillnode++;
     
     ret = malloc(sizeof(FILLNODE));
     check_ptr_or_quit(ret);
@@ -194,13 +228,11 @@ FILLNODE * init_fillnode(FILL * fill, FILLNODE * prev, FILLNODE * next)
 }
 
 
-int ORDERNODE_INITS = 0;
-
 ORDERNODE * init_ordernode(ORDER * order, ORDERNODE * prev, ORDERNODE * next)
 {
     ORDERNODE * ret;
     
-    ORDERNODE_INITS++;
+    DebugInfo.inits_of_ordernode++;
     
     ret = malloc(sizeof(ORDERNODE));
     check_ptr_or_quit(ret);
@@ -271,14 +303,11 @@ char * new_timestamp(void)
 }
 
 
-int ORDER_INITS = 0;
-int GLOBAL_ORDER_LIST_REALLOCS = 0;
-
 ORDER * init_order(ACCOUNT * account, int qty, int price, int direction, int orderType, int id)
 {
     ORDER * ret;
     
-    ORDER_INITS++;
+    DebugInfo.inits_of_order++;
     
     ret = malloc(sizeof(ORDER));
     check_ptr_or_quit(ret);
@@ -297,13 +326,13 @@ ORDER * init_order(ACCOUNT * account, int qty, int price, int direction, int ord
 
     // Now deal with the global order storage...
     
-    if (id >= CurrentOrderArrayLen)
+    while (id >= CurrentOrderArrayLen)
     {
-        AllOrders = realloc(AllOrders, (CurrentOrderArrayLen + 64) * sizeof(ORDER *));          // FIXME
+        AllOrders = realloc(AllOrders, (CurrentOrderArrayLen + 8192) * sizeof(ORDER *));
         check_ptr_or_quit(AllOrders);
-        CurrentOrderArrayLen += 64;
+        CurrentOrderArrayLen += 8192;
         
-        GLOBAL_ORDER_LIST_REALLOCS++;
+        DebugInfo.reallocs_of_global_order_list++;
     }
     AllOrders[id] = ret;
     HighestKnownOrder = id;
@@ -729,13 +758,11 @@ int fok_can_sell(int qty, int price)
 }
 
 
-int ACCOUNT_INITS = 0;
-
 ACCOUNT * init_account(char * name)
 {
     ACCOUNT * ret;
     
-    ACCOUNT_INITS++;
+    DebugInfo.inits_of_account++;
     
     ret = malloc(sizeof(ACCOUNT));
     check_ptr_or_quit(ret);
@@ -750,10 +777,6 @@ ACCOUNT * init_account(char * name)
 }
 
 
-int GLOBAL_ACCOUNT_LIST_REALLOCS = 0;
-
-int ACCOUNT_ORDER_LIST_REALLOCS = 0;
-
 ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int price, int direction, int orderType)
 {
     // Note: account_name will be in the stack of the calling function, not in the heap
@@ -761,6 +784,7 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
     ORDER * order;
     ORDER_AND_ERROR * o_and_e;
     int id;
+    int n;
     ACCOUNT * accountobject;
     
     // The o_and_e structure lets us send either an order or an error to the caller...
@@ -776,22 +800,34 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         return o_and_e;
     }
     
-    // Check if account_int is unknown, in which case create an account struct for it.
-    // Also extend the array of all known accounts if needed.
+    // If account_id is too high, we will need more storage...
     
-    if (account_int > HighestKnownAccount)
+    while (account_int >= CurrentAccountArrayLen)
     {
-        if (account_int >= CurrentAccountArrayLen)
+        AllAccounts = realloc(AllAccounts, (CurrentAccountArrayLen + 64) * sizeof(ACCOUNT *));
+        check_ptr_or_quit(AllAccounts);
+        CurrentAccountArrayLen += 64;
+        
+        // We must NULLify our new account pointers because there can be holes in the known
+        // account IDs: e.g. known IDs are 0,1,2,3,7. So, if we're asked to lookup ID 5, we
+        // need a way to know it doesn't exist...
+        
+        for (n = CurrentAccountArrayLen - 64; n < CurrentAccountArrayLen; n++)
         {
-            AllAccounts = realloc(AllAccounts, (CurrentAccountArrayLen + 1024) * sizeof(ACCOUNT *));
-            check_ptr_or_quit(AllAccounts);
-            CurrentAccountArrayLen += 1024;
-            
-            GLOBAL_ACCOUNT_LIST_REALLOCS++;
+            AllAccounts[n] = NULL;
         }
-        AllAccounts[account_int] = init_account(account_name);
-        HighestKnownAccount = account_int;
+        
+        DebugInfo.reallocs_of_global_account_list++;
     }
+
+    // If account is NULL, create it...
+    
+    if (AllAccounts[account_int] == NULL)
+    {
+        AllAccounts[account_int] = init_account(account_name);
+    }
+
+    // Now reference it...
     
     accountobject = AllAccounts[account_int];
     
@@ -807,7 +843,7 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         check_ptr_or_quit(accountobject->orders);
         accountobject->arraylen += 256;
         
-        ACCOUNT_ORDER_LIST_REALLOCS++;
+        DebugInfo.reallocs_of_account_order_list++;
     }
     accountobject->orders[accountobject->count] = order;
     accountobject->count += 1;
@@ -1233,7 +1269,25 @@ int main(int argc, char ** argv)
         
         if (strcmp("__DEBUG_MEMORY__", tokens[0]) == 0)
         {
-            printf("LEVEL_INITS: %d, FILL_INITS: %d, FILLNODE_INITS: %d, ORDER_INITS: %d, ORDERNODE_INITS: %d, ACCOUNT_INITS: %d, GLOBAL_ORDER_LIST_REALLOCS: %d, GLOBAL_ACCOUNT_LIST_REALLOCS: %d, ACCOUNT_ORDER_LIST_REALLOCS: %d", LEVEL_INITS, FILL_INITS, FILLNODE_INITS, ORDER_INITS, ORDERNODE_INITS, ACCOUNT_INITS, GLOBAL_ORDER_LIST_REALLOCS, GLOBAL_ACCOUNT_LIST_REALLOCS, ACCOUNT_ORDER_LIST_REALLOCS);
+            printf( "DebugInfo.inits_of_level: %d,\n"                // The compiler auto-concatenates these things
+                    "DebugInfo.inits_of_fill: %d,\n"                 // (note the lack of commas)
+                    "DebugInfo.inits_of_fillnode: %d,\n" 
+                    "DebugInfo.inits_of_order: %d,\n"
+                    "DebugInfo.inits_of_ordernode: %d,\n"
+                    "DebugInfo.inits_of_account: %d,\n"
+                    "DebugInfo.reallocs_of_global_order_list: %d,\n"
+                    "DebugInfo.reallocs_of_global_account_list: %d,\n"
+                    "DebugInfo.reallocs_of_account_order_list: %d",
+                    DebugInfo.inits_of_level,
+                    DebugInfo.inits_of_fill,
+                    DebugInfo.inits_of_fillnode,
+                    DebugInfo.inits_of_order,
+                    DebugInfo.inits_of_ordernode,
+                    DebugInfo.inits_of_account,
+                    DebugInfo.reallocs_of_global_order_list,
+                    DebugInfo.reallocs_of_global_account_list,
+                    DebugInfo.reallocs_of_account_order_list
+                    );
             end_message();
             continue;
         }

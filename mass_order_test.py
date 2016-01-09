@@ -2,7 +2,7 @@ import random
 import subprocess
 import time
 
-TEST_TIME = 30
+TEST_TIME = 10
 
 proc = subprocess.Popen(['disorderCook.exe', "SELLEX", "CATS"], shell = False, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
 
@@ -29,15 +29,23 @@ def get_response_from_process(proc, message):       # MUST MATCH THE REAL THING 
             result += line
 
 n = 0
+
+all_account_ids = dict()
+
 while 1:
-    print(n)
+    # print(n)
     n += 1
     price = random.randint(1, 5000)
     qty = random.randint(1, 100)
     direction = random.choice([1, 2])
     orderType = random.choice([1, 1, 1, 1, 2, 3, 4])
 
-    message = "ORDER {} {} {} {} {} {}".format("EXB123456", 0, qty, price, direction, orderType)
+    account = "account" + str(n // 1000)
+    if account not in all_account_ids:
+        all_account_ids[account] = len(all_account_ids)
+    acc_id = all_account_ids[account]
+    
+    message = "ORDER {} {} {} {} {} {}".format(account, acc_id, qty, price, direction, orderType)
     raw_response = get_response_from_process(proc, message)
     # print(raw_response)
     
