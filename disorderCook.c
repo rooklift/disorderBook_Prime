@@ -663,7 +663,6 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
     
     ORDER * order;
     ORDER_AND_ERROR * o_and_e;
-    ACCOUNT * account;
     
     int id;
     
@@ -914,7 +913,6 @@ int main(int argc, char ** argv)
     
     int n;
     int flag;
-    ORDER * order;
     ORDER_AND_ERROR * o_and_e;
     LEVEL * level;
     ORDERNODE * ordernode;
