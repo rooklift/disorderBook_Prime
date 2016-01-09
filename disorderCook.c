@@ -777,28 +777,9 @@ ACCOUNT * init_account(char * name)
 }
 
 
-ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int price, int direction, int orderType)
+ACCOUNT * account_lookup_or_create (char * account_name, int account_int)
 {
-    // Note: account_name will be in the stack of the calling function, not in the heap
-    
-    ORDER * order;
-    ORDER_AND_ERROR * o_and_e;
-    int id;
     int n;
-    ACCOUNT * accountobject;
-    
-    // The o_and_e structure lets us send either an order or an error to the caller...
-    
-    o_and_e = init_o_and_e();
-    
-    // Check for too high an order ID...
-    
-    id = next_id(0);
-    if (id >= MAXORDERS)
-    {
-        o_and_e->error = TOO_MANY_ORDERS;
-        return o_and_e;
-    }
     
     // If account_id is too high, we will need more storage...
     
@@ -820,16 +801,45 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         DebugInfo.reallocs_of_global_account_list++;
     }
 
-    // If account is NULL, create it...
+    // If the account corresponsing to the account_id is NULL, create it...
     
     if (AllAccounts[account_int] == NULL)
     {
         AllAccounts[account_int] = init_account(account_name);
     }
-
-    // Now reference it...
     
-    accountobject = AllAccounts[account_int];
+    // Done...
+    
+    return AllAccounts[account_int];
+}
+
+
+ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int price, int direction, int orderType)
+{
+    // Note: account_name will be in the stack of the calling function, not in the heap
+    
+    ORDER * order;
+    ORDER_AND_ERROR * o_and_e;
+    int id;
+    ACCOUNT * accountobject;
+    
+    // The o_and_e structure lets us send either an order or an error to the caller...
+    
+    o_and_e = init_o_and_e();
+    
+    // Check for too high an order ID...
+    
+    id = next_id(0);
+    if (id >= MAXORDERS)
+    {
+        o_and_e->error = TOO_MANY_ORDERS;
+        return o_and_e;
+    }
+    
+    // The following call gets the account object. If not already extant, it is created.
+    // If more memory is needed to store accounts up to this account_id, that happens...
+    
+    accountobject = account_lookup_or_create(account_name, account_int);
     
     // Create order struct...
     
@@ -901,7 +911,6 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
     }
     
     o_and_e->order = order;
-    
     return o_and_e;
 }
 
