@@ -116,7 +116,7 @@ void end_message(void)
 }
 
 
-void check_ram_or_die(void * ptr)
+void check_ptr_or_quit(void * ptr)
 {
     if (ptr == NULL)
     {
@@ -133,7 +133,7 @@ LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
     LEVEL * ret;
     
     ret = malloc(sizeof(LEVEL));
-    check_ram_or_die(ret);
+    check_ptr_or_quit(ret);
     
     ret->price = price;
     ret->firstordernode = ordernode;
@@ -149,7 +149,7 @@ FILL * init_fill(int price, int qty, char * ts)
     FILL * ret;
     
     ret = malloc(sizeof(FILL));
-    check_ram_or_die(ret);
+    check_ptr_or_quit(ret);
     
     ret->price = price;
     ret->qty = qty;
@@ -164,7 +164,7 @@ FILLNODE * init_fillnode(FILL * fill, FILLNODE * prev, FILLNODE * next)
     FILLNODE * ret;
     
     ret = malloc(sizeof(FILLNODE));
-    check_ram_or_die(ret);
+    check_ptr_or_quit(ret);
     
     ret->fill = fill;
     ret->prev = prev;
@@ -179,7 +179,7 @@ ORDERNODE * init_ordernode(ORDER * order, ORDERNODE * prev, ORDERNODE * next)
     ORDERNODE * ret;
     
     ret = malloc(sizeof(ORDERNODE));
-    check_ram_or_die(ret);
+    check_ptr_or_quit(ret);
     
     ret->order = order;
     ret->prev = prev;
@@ -225,7 +225,7 @@ char * new_timestamp(void)
     struct tm * ti;
     
     timestamp = malloc(64);
-    check_ram_or_die(timestamp);
+    check_ptr_or_quit(timestamp);
     
     t = time(NULL);
     
@@ -252,7 +252,7 @@ ORDER * init_order(ACCOUNT * account, int qty, int price, int direction, int ord
     ORDER * ret;
     
     ret = malloc(sizeof(ORDER));
-    check_ram_or_die(ret);
+    check_ptr_or_quit(ret);
     
     ret->direction = direction;
     ret->originalQty = qty;
@@ -271,7 +271,7 @@ ORDER * init_order(ACCOUNT * account, int qty, int price, int direction, int ord
     if (id >= CurrentOrderArrayLen)
     {
         AllOrders = realloc(AllOrders, (CurrentOrderArrayLen + 8192) * sizeof(ORDER *));
-        check_ram_or_die(AllOrders);
+        check_ptr_or_quit(AllOrders);
         CurrentOrderArrayLen += 8192;
     }
     AllOrders[id] = ret;
@@ -286,7 +286,7 @@ ORDER_AND_ERROR * init_o_and_e()
     ORDER_AND_ERROR * ret;
     
     ret = malloc(sizeof(ORDER_AND_ERROR));
-    check_ram_or_die(ret);
+    check_ptr_or_quit(ret);
     
     ret->order = NULL;
     ret->error = 0;
@@ -644,12 +644,66 @@ void insert_bid(ORDER * order)
 }
 
 
+int fok_can_buy(int qty, int price)
+{
+    // Must use subtraction only. Adding could overflow.
+    
+    LEVEL * level;
+    ORDERNODE * ordernode;
+    
+    level = FirstAskLevel;
+    while (level != NULL && level->price <= price)
+    {
+        ordernode = level->firstordernode;
+        while (ordernode != NULL)
+        {
+            qty -= ordernode->order->qty;
+            if (qty <= 0)
+            {
+                return 1;
+            }
+            ordernode = ordernode->next;
+        }
+        level = level->next;
+    }
+    
+    return 0;
+}
+
+
+int fok_can_sell(int qty, int price)
+{
+    // Must use subtraction only. Adding could overflow.
+    
+    LEVEL * level;
+    ORDERNODE * ordernode;
+    
+    level = FirstBidLevel;
+    while (level != NULL && level->price >= price)
+    {
+        ordernode = level->firstordernode;
+        while (ordernode != NULL)
+        {
+            qty -= ordernode->order->qty;
+            if (qty <= 0)
+            {
+                return 1;
+            }
+            ordernode = ordernode->next;
+        }
+        level = level->next;
+    }
+    
+    return 0;
+}
+
+
 ACCOUNT * init_account(char * name)
 {
     ACCOUNT * ret;
     
     ret = malloc(sizeof(ACCOUNT));
-    check_ram_or_die(ret);
+    check_ptr_or_quit(ret);
     
     mod_strncpy(ret->name, name, MAXTOKENSIZE);
     
@@ -685,7 +739,7 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         if (account_int >= CurrentAccountArrayLen)
         {
             AllAccounts = realloc(AllAccounts, (CurrentAccountArrayLen + 1024) * sizeof(ACCOUNT *));
-            check_ram_or_die(AllAccounts);
+            check_ptr_or_quit(AllAccounts);
             CurrentAccountArrayLen += 1024;
         }
         AllAccounts[account_int] = init_account(account_name);
@@ -699,7 +753,18 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
     {
         run_order(order);
     } else {
-        // Some stuff to deal with FOK orders
+        if (order->direction == BUY)
+        {
+            if (fok_can_buy(order->qty, order->price))
+            {
+                run_order(order);
+            }
+        } else {
+            if (fok_can_sell(order->qty, order->price))
+            {
+                run_order(order);
+            }
+        }
     }
     
     if (order->direction == SELL)
