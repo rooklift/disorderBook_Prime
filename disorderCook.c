@@ -743,6 +743,7 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
             CurrentAccountArrayLen += 1024;
         }
         AllAccounts[account_int] = init_account(account_name);
+        HighestKnownAccount = account_int;
     }
     
     // Create order struct...
