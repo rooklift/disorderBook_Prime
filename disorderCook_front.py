@@ -1,8 +1,9 @@
 # TODO:
 #
-# Add quote
-# Add status all orders
-# Add status all orders one stock
+# FOK orders (in backend)
+# Quote
+# Status all orders
+# Status all orders one stock
 
 import json
 import optparse

@@ -4,12 +4,14 @@
     We store all data in memory so that the user can retrieve it later via
     yet-to-be-written functions. As such, there are very few free() calls.
    
-    The front end has many responsibilities:
-   
-        Authentication
-        Validating POST input
-        Sending queries to us in the correct format
-        Correctly reading our responses
+    We don't handle user input directly. The frontend is responsible for
+    sending us commands as single lines. Only the ORDER command is tricky:
+    
+    ORDER CES365413 5 100 5000 1 1\n
+    
+    Each account should be given a unique, low non-negative integer as an id (RAM is allocated based on these,
+    so keep them as low as possible. If there are 
+    
     */
 
 #include <assert.h>
@@ -47,8 +49,11 @@ typedef struct FillNode_struct {
     struct FillNode_struct * next;
 } FILLNODE;
 
-typedef struct AccountName_struct {             // It's easier to think about pointers to structs
-    char name[MAXTOKENSIZE];                    // that have strings, than pointers to strings.
+typedef struct Account_struct {         // This might hold more than just a name at some point
+    char name[MAXTOKENSIZE];
+    struct Order_struct ** orders;
+    int arraylen;
+    int count;
 } ACCOUNT;
 
 typedef struct Order_struct {
@@ -58,7 +63,7 @@ typedef struct Order_struct {
     int price;
     int orderType;
     int id;
-    struct AccountName_struct * account;
+    struct Account_struct * account;
     char * ts;
     struct FillNode_struct * firstfillnode;
     int totalFilled;
@@ -101,6 +106,9 @@ int LastSize = -1;
 ORDER ** AllOrders = NULL;
 int CurrentOrderArrayLen = 0;
 int HighestKnownOrder = -1;
+
+// The following is currently useless (though there's some code writing to these things)
+// but it could be useful if we ever implement getting all orders of an account
 
 ACCOUNT ** AllAccounts = NULL;
 int CurrentAccountArrayLen = 0;
@@ -707,6 +715,10 @@ ACCOUNT * init_account(char * name)
     
     mod_strncpy(ret->name, name, MAXTOKENSIZE);
     
+    ret->orders = NULL;
+    ret->arraylen = 0;
+    ret->count = 0;
+    
     return ret;
 }
 
@@ -717,8 +729,10 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
     
     ORDER * order;
     ORDER_AND_ERROR * o_and_e;
-    
     int id;
+    ACCOUNT * accountobject;
+    
+    // The o_and_e structure lets us send either an order or an error to the caller...
     
     o_and_e = init_o_and_e();
     
@@ -731,7 +745,7 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         return o_and_e;
     }
     
-    // Check if account_int is unknown, in which case create an account struct to hold its name.
+    // Check if account_int is unknown, in which case create an account struct for it.
     // Also extend the array of all known accounts if needed.
     
     if (account_int > HighestKnownAccount)
@@ -746,9 +760,24 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         HighestKnownAccount = account_int;
     }
     
+    accountobject = AllAccounts[account_int];
+    
     // Create order struct...
     
-    order = init_order(AllAccounts[account_int], qty, price, direction, orderType, id);
+    order = init_order(accountobject, qty, price, direction, orderType, id);
+    
+    // Add the order to the account's array of orders, extending that array if needed...
+    
+    if (accountobject->count == accountobject->arraylen)
+    {
+        accountobject->orders = realloc(accountobject->orders, (accountobject->arraylen + 128) * sizeof(ORDER *));
+        check_ptr_or_quit(accountobject->orders);
+        accountobject->arraylen += 128;
+    }
+    accountobject->count += 1;
+    accountobject->orders[accountobject->count] = order;
+    
+    // Run the order, with checks for FOK if needed...
     
     if (order->orderType != FOK)
     {
@@ -768,6 +797,8 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         }
     }
     
+    // Iterate through the Bids or Asks as appropriate, removing them from the book if they are now closed...
+    
     if (order->direction == SELL)
     {
         cleanup_closed_bids();
@@ -775,10 +806,12 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         cleanup_closed_asks();
     }
     
-    if (order->orderType == MARKET)
-    {
-        order->price = 0;       // This is the official behaviour
-    }
+    // Market orders get set to price == 0 in official for storage / reporting
+    // (the timing doesn't matter, this could be done before running the order)
+  
+    if (order->orderType == MARKET) order->price = 0;
+
+    // Place open limit orders on the book...
     
     if (order->open)
     {
