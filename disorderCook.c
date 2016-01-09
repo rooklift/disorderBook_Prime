@@ -144,9 +144,6 @@ ORDER ** AllOrders = NULL;
 int CurrentOrderArrayLen = 0;
 int HighestKnownOrder = -1;
 
-// The following is currently useless (though there's some code writing to these things)
-// but it could be useful if we ever implement getting all orders of an account
-
 ACCOUNT ** AllAccounts = NULL;
 int CurrentAccountArrayLen = 0;
 
@@ -814,6 +811,23 @@ ACCOUNT * account_lookup_or_create (char * account_name, int account_int)
 }
 
 
+void add_order_to_account(ORDER * order, ACCOUNT * accountobject)
+{
+    if (accountobject->count == accountobject->arraylen)
+    {
+        accountobject->orders = realloc(accountobject->orders, (accountobject->arraylen + 256) * sizeof(ORDER *));
+        check_ptr_or_quit(accountobject->orders);
+        accountobject->arraylen += 256;
+        
+        DebugInfo.reallocs_of_account_order_list++;
+    }
+    accountobject->orders[accountobject->count] = order;
+    accountobject->count += 1;
+    
+    return;
+}
+
+
 ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int price, int direction, int orderType)
 {
     // Note: account_name will be in the stack of the calling function, not in the heap
@@ -841,22 +855,11 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
     
     accountobject = account_lookup_or_create(account_name, account_int);
     
-    // Create order struct...
+    // Create order struct, and store a pointer to it in the account...
     
     order = init_order(accountobject, qty, price, direction, orderType, id);
-
-    // Add the order to the account's array of orders, extending that array if needed...
     
-    if (accountobject->count == accountobject->arraylen)
-    {
-        accountobject->orders = realloc(accountobject->orders, (accountobject->arraylen + 256) * sizeof(ORDER *));
-        check_ptr_or_quit(accountobject->orders);
-        accountobject->arraylen += 256;
-        
-        DebugInfo.reallocs_of_account_order_list++;
-    }
-    accountobject->orders[accountobject->count] = order;
-    accountobject->count += 1;
+    add_order_to_account(order, accountobject);
     
     // Run the order, with checks for FOK if needed...
     
