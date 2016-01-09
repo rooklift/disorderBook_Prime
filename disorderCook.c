@@ -4,12 +4,14 @@
     We store all data in memory so that the user can retrieve it later via
     yet-to-be-written functions. As such, there are very few free() calls.
    
-    The front end has many responsibilities:
-   
-        Authentication
-        Validating POST input
-        Sending queries to us in the correct format
-        Correctly reading our responses
+    We don't handle user input directly. The frontend is responsible for
+    sending us commands as single lines. Only the ORDER command is tricky:
+    
+    ORDER CES365413 5 100 5000 1 1\n
+    
+    Each account should be given a unique, low non-negative integer as an id (RAM is allocated based on these,
+    so keep them as low as possible. If there are 
+    
     */
 
 #include <assert.h>
@@ -47,8 +49,11 @@ typedef struct FillNode_struct {
     struct FillNode_struct * next;
 } FILLNODE;
 
-typedef struct AccountName_struct {             // It's easier to think about pointers to structs
-    char name[MAXTOKENSIZE];                    // that have strings, than pointers to strings.
+typedef struct Account_struct {         // This might hold more than just a name at some point
+    char name[MAXTOKENSIZE];
+    struct Order_struct ** orders;
+    int arraylen;
+    int count;
 } ACCOUNT;
 
 typedef struct Order_struct {
@@ -58,7 +63,7 @@ typedef struct Order_struct {
     int price;
     int orderType;
     int id;
-    struct AccountName_struct * account;
+    struct Account_struct * account;
     char * ts;
     struct FillNode_struct * firstfillnode;
     int totalFilled;
@@ -102,6 +107,9 @@ ORDER ** AllOrders = NULL;
 int CurrentOrderArrayLen = 0;
 int HighestKnownOrder = -1;
 
+// The following is currently useless (though there's some code writing to these things)
+// but it could be useful if we ever implement getting all orders of an account
+
 ACCOUNT ** AllAccounts = NULL;
 int CurrentAccountArrayLen = 0;
 int HighestKnownAccount = -1;
@@ -128,9 +136,13 @@ void check_ptr_or_quit(void * ptr)
 }
 
 
+int LEVEL_INITS = 0;
+
 LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
 {
     LEVEL * ret;
+    
+    LEVEL_INITS++;
     
     ret = malloc(sizeof(LEVEL));
     check_ptr_or_quit(ret);
@@ -144,9 +156,13 @@ LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
 }
 
 
+int FILL_INITS = 0;
+
 FILL * init_fill(int price, int qty, char * ts)
 {
     FILL * ret;
+    
+    FILL_INITS++;
     
     ret = malloc(sizeof(FILL));
     check_ptr_or_quit(ret);
@@ -159,9 +175,13 @@ FILL * init_fill(int price, int qty, char * ts)
 }
 
 
+int FILLNODE_INITS = 0;
+
 FILLNODE * init_fillnode(FILL * fill, FILLNODE * prev, FILLNODE * next)
 {
     FILLNODE * ret;
+    
+    FILLNODE_INITS++;
     
     ret = malloc(sizeof(FILLNODE));
     check_ptr_or_quit(ret);
@@ -174,9 +194,13 @@ FILLNODE * init_fillnode(FILL * fill, FILLNODE * prev, FILLNODE * next)
 }
 
 
+int ORDERNODE_INITS = 0;
+
 ORDERNODE * init_ordernode(ORDER * order, ORDERNODE * prev, ORDERNODE * next)
 {
     ORDERNODE * ret;
+    
+    ORDERNODE_INITS++;
     
     ret = malloc(sizeof(ORDERNODE));
     check_ptr_or_quit(ret);
@@ -247,9 +271,14 @@ char * new_timestamp(void)
 }
 
 
+int ORDER_INITS = 0;
+int GLOBAL_ORDER_LIST_REALLOCS = 0;
+
 ORDER * init_order(ACCOUNT * account, int qty, int price, int direction, int orderType, int id)
 {
     ORDER * ret;
+    
+    ORDER_INITS++;
     
     ret = malloc(sizeof(ORDER));
     check_ptr_or_quit(ret);
@@ -270,9 +299,11 @@ ORDER * init_order(ACCOUNT * account, int qty, int price, int direction, int ord
     
     if (id >= CurrentOrderArrayLen)
     {
-        AllOrders = realloc(AllOrders, (CurrentOrderArrayLen + 8192) * sizeof(ORDER *));
+        AllOrders = realloc(AllOrders, (CurrentOrderArrayLen + 64) * sizeof(ORDER *));          // FIXME
         check_ptr_or_quit(AllOrders);
-        CurrentOrderArrayLen += 8192;
+        CurrentOrderArrayLen += 64;
+        
+        GLOBAL_ORDER_LIST_REALLOCS++;
     }
     AllOrders[id] = ret;
     HighestKnownOrder = id;
@@ -698,18 +729,30 @@ int fok_can_sell(int qty, int price)
 }
 
 
+int ACCOUNT_INITS = 0;
+
 ACCOUNT * init_account(char * name)
 {
     ACCOUNT * ret;
+    
+    ACCOUNT_INITS++;
     
     ret = malloc(sizeof(ACCOUNT));
     check_ptr_or_quit(ret);
     
     mod_strncpy(ret->name, name, MAXTOKENSIZE);
     
+    ret->orders = NULL;
+    ret->arraylen = 0;
+    ret->count = 0;
+    
     return ret;
 }
 
+
+int GLOBAL_ACCOUNT_LIST_REALLOCS = 0;
+
+int ACCOUNT_ORDER_LIST_REALLOCS = 0;
 
 ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int price, int direction, int orderType)
 {
@@ -717,8 +760,10 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
     
     ORDER * order;
     ORDER_AND_ERROR * o_and_e;
-    
     int id;
+    ACCOUNT * accountobject;
+    
+    // The o_and_e structure lets us send either an order or an error to the caller...
     
     o_and_e = init_o_and_e();
     
@@ -731,7 +776,7 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         return o_and_e;
     }
     
-    // Check if account_int is unknown, in which case create an account struct to hold its name.
+    // Check if account_int is unknown, in which case create an account struct for it.
     // Also extend the array of all known accounts if needed.
     
     if (account_int > HighestKnownAccount)
@@ -741,14 +786,33 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
             AllAccounts = realloc(AllAccounts, (CurrentAccountArrayLen + 1024) * sizeof(ACCOUNT *));
             check_ptr_or_quit(AllAccounts);
             CurrentAccountArrayLen += 1024;
+            
+            GLOBAL_ACCOUNT_LIST_REALLOCS++;
         }
         AllAccounts[account_int] = init_account(account_name);
         HighestKnownAccount = account_int;
     }
     
+    accountobject = AllAccounts[account_int];
+    
     // Create order struct...
     
-    order = init_order(AllAccounts[account_int], qty, price, direction, orderType, id);
+    order = init_order(accountobject, qty, price, direction, orderType, id);
+
+    // Add the order to the account's array of orders, extending that array if needed...
+    
+    if (accountobject->count == accountobject->arraylen)
+    {
+        accountobject->orders = realloc(accountobject->orders, (accountobject->arraylen + 256) * sizeof(ORDER *));
+        check_ptr_or_quit(accountobject->orders);
+        accountobject->arraylen += 256;
+        
+        ACCOUNT_ORDER_LIST_REALLOCS++;
+    }
+    accountobject->orders[accountobject->count] = order;
+    accountobject->count += 1;
+    
+    // Run the order, with checks for FOK if needed...
     
     if (order->orderType != FOK)
     {
@@ -768,6 +832,8 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         }
     }
     
+    // Iterate through the Bids or Asks as appropriate, removing them from the book if they are now closed...
+    
     if (order->direction == SELL)
     {
         cleanup_closed_bids();
@@ -775,10 +841,12 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
         cleanup_closed_asks();
     }
     
-    if (order->orderType == MARKET)
-    {
-        order->price = 0;       // This is the official behaviour
-    }
+    // Market orders get set to price == 0 in official for storage / reporting
+    // (the timing doesn't matter, this could be done before running the order)
+  
+    if (order->orderType == MARKET) order->price = 0;
+
+    // Place open limit orders on the book...
     
     if (order->open)
     {
@@ -1157,6 +1225,15 @@ int main(int argc, char ** argv)
             }
             
             printf("OK %s", AllOrders[id]->account->name);
+            end_message();
+            continue;
+        }
+        
+        // --------------------------------------- DEBUG REQUEST FOR MEMORY INFO -----------------------------------------
+        
+        if (strcmp("__DEBUG_MEMORY__", tokens[0]) == 0)
+        {
+            printf("LEVEL_INITS: %d, FILL_INITS: %d, FILLNODE_INITS: %d, ORDER_INITS: %d, ORDERNODE_INITS: %d, ACCOUNT_INITS: %d, GLOBAL_ORDER_LIST_REALLOCS: %d, GLOBAL_ACCOUNT_LIST_REALLOCS: %d, ACCOUNT_ORDER_LIST_REALLOCS: %d", LEVEL_INITS, FILL_INITS, FILLNODE_INITS, ORDER_INITS, ORDERNODE_INITS, ACCOUNT_INITS, GLOBAL_ORDER_LIST_REALLOCS, GLOBAL_ACCOUNT_LIST_REALLOCS, ACCOUNT_ORDER_LIST_REALLOCS);
             end_message();
             continue;
         }

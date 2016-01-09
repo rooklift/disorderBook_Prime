@@ -38,8 +38,8 @@ while 1:
     orderType = random.choice([1, 1, 1, 1, 2, 3, 4])
 
     message = "ORDER {} {} {} {} {} {}".format("EXB123456", 0, qty, price, direction, orderType)
-    
     raw_response = get_response_from_process(proc, message)
+    # print(raw_response)
     
     # time.sleep(0.01)
     if time.clock() - starttime > TEST_TIME:
@@ -47,5 +47,8 @@ while 1:
 
 print("{} orders placed in {} seconds".format(n, TEST_TIME))
 print("= {} per second".format(n // TEST_TIME))
+
+debug_info = get_response_from_process(proc, "__DEBUG_MEMORY__")
+print(debug_info)
 
 input()
