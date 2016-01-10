@@ -49,9 +49,9 @@
 #define FOK 3
 #define IOC 4
 
-#define MAXINPUT 2048
-#define MAXTOKENSIZE 100
-#define MAXTOKENS 50                // Well-behaved frontend will never send this many
+#define MAXSTRING 2048
+#define SMALLSTRING 64
+#define MAXTOKENS 64                // Well-behaved frontend will never send this many
 
 #define MAXORDERS 2000000000        // Not going all the way to MAX_INT, because various numbers might go above this
                   
@@ -71,7 +71,7 @@ typedef struct FillNode_struct {
 } FILLNODE;
 
 typedef struct Account_struct {
-    char name[MAXTOKENSIZE];
+    char name[SMALLSTRING];
     struct Order_struct ** orders;
     int arraylen;
     int count;
@@ -129,14 +129,13 @@ typedef struct DebugInfo_struct {
 // ---------------------------------- GLOBALS -----------------------------------------------
 
 
-char Venue[MAXTOKENSIZE];
-char Symbol[MAXTOKENSIZE];
+char Venue[SMALLSTRING];
+char Symbol[SMALLSTRING];
 
 LEVEL * FirstBidLevel = NULL;
 LEVEL * FirstAskLevel = NULL;
 
 char * LastTradeTime = NULL;
-
 int LastPrice = -1;
 int LastSize = -1;
 
@@ -277,7 +276,7 @@ char * new_timestamp(void)
     time_t t;
     struct tm * ti;
     
-    timestamp = malloc(64);
+    timestamp = malloc(SMALLSTRING);
     check_ptr_or_quit(timestamp);
     
     t = time(NULL);
@@ -291,9 +290,9 @@ char * new_timestamp(void)
     
     if (ti)
     {
-        sprintf(timestamp, "%d-%02d-%02dT%02d:%02d:%02d.0000Z", ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday, ti->tm_hour, ti->tm_min, ti->tm_sec);
+        snprintf(timestamp, SMALLSTRING, "%d-%02d-%02dT%02d:%02d:%02d.0000Z", ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday, ti->tm_hour, ti->tm_min, ti->tm_sec);
     } else {
-        sprintf(timestamp, "Unknown");
+        snprintf(timestamp, SMALLSTRING, "Unknown");
     }
     
     return timestamp;
@@ -764,7 +763,7 @@ ACCOUNT * init_account(char * name)
     ret = malloc(sizeof(ACCOUNT));
     check_ptr_or_quit(ret);
     
-    mod_strncpy(ret->name, name, MAXTOKENSIZE);
+    mod_strncpy(ret->name, name, SMALLSTRING);
     
     ret->orders = NULL;
     ret->arraylen = 0;
@@ -858,7 +857,6 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
     // Create order struct, and store a pointer to it in the account...
     
     order = init_order(accountobject, qty, price, direction, orderType, id);
-    
     add_order_to_account(order, accountobject);
     
     // Run the order, with checks for FOK if needed...
@@ -895,7 +893,7 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
   
     if (order->orderType == MARKET) order->price = 0;
 
-    // Place open limit orders on the book...
+    // Place open limit orders on the book. Mark other order types as closed...
     
     if (order->open)
     {
@@ -946,19 +944,19 @@ void print_fills(ORDER * order)
 
 void print_order(ORDER * order)
 {
-    char orderType_to_print[MAXTOKENSIZE];
+    char orderType_to_print[SMALLSTRING];
     
     if (order->orderType == LIMIT)
     {
-        mod_strncpy(orderType_to_print, "limit", MAXTOKENSIZE);
+        mod_strncpy(orderType_to_print, "limit", SMALLSTRING);
     } else if (order->orderType == MARKET) {
-        mod_strncpy(orderType_to_print, "market", MAXTOKENSIZE);
+        mod_strncpy(orderType_to_print, "market", SMALLSTRING);
     } else if (order->orderType == IOC) {
-        mod_strncpy(orderType_to_print, "immediate-or-cancel", MAXTOKENSIZE);
+        mod_strncpy(orderType_to_print, "immediate-or-cancel", SMALLSTRING);
     } else if (order->orderType == FOK) {
-        mod_strncpy(orderType_to_print, "fill-or-kill", MAXTOKENSIZE);
+        mod_strncpy(orderType_to_print, "fill-or-kill", SMALLSTRING);
     } else {
-        mod_strncpy(orderType_to_print, "unknown", MAXTOKENSIZE);
+        mod_strncpy(orderType_to_print, "unknown", SMALLSTRING);
     }
     
     printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
@@ -1083,12 +1081,59 @@ void cleanup_after_cancel(ORDERNODE * ordernode, LEVEL * level)       // Free th
 }
 
 
+int get_size_from_level(LEVEL * level)
+{
+    ORDERNODE * ordernode;
+    int ret;
+    
+    if (level == NULL)
+    {
+        return 0;
+    }
+    
+    ret = 0;
+    
+    for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
+    {
+        if ((2147483647 - ret) - ordernode->order->qty < 0)
+        {
+            return 2147483647;
+        } else {
+            ret += ordernode->order->qty;
+        }
+    }
+    return ret;
+}
+
+
+int get_depth(LEVEL * level)        // Returns size of this level and all worse levels (if level exists)
+{
+    int onesize;
+    int ret;
+    
+    ret = 0;
+
+    for ( ; level != NULL; level = level->next)
+    {
+        onesize = get_size_from_level(level);
+        
+        if ((2147483647 - ret) - onesize < 0)
+        {
+            return 2147483647;
+        } else {
+            ret += onesize;
+        }
+    }
+    return ret;
+}
+
+
 int main(int argc, char ** argv)
 {
     char * eofcheck;
     char * tmp;
-    char input[MAXINPUT];
-    char tokens[MAXTOKENS][MAXTOKENSIZE];
+    char input[MAXSTRING];
+    char tokens[MAXTOKENS][SMALLSTRING];
     int token_count;
     
     // The following are all general-purpose vars to be used wherever needed, they don't store long-term info
@@ -1103,15 +1148,23 @@ int main(int argc, char ** argv)
     int dir;
     int orderType;
     char * ts;
+    char buildup[MAXSTRING];
+    char part[MAXSTRING];
+    int bid;
+    int ask;
+    int bidSize;
+    int bidDepth;
+    int askSize;
+    int askDepth;
     
     assert(argc == 3);
     
-    mod_strncpy(Venue, argv[1], MAXTOKENSIZE);
-    mod_strncpy(Symbol, argv[2], MAXTOKENSIZE);
+    mod_strncpy(Venue, argv[1], SMALLSTRING);
+    mod_strncpy(Symbol, argv[2], SMALLSTRING);
     
     while (1)
     {
-        eofcheck = fgets(input, MAXINPUT, stdin);
+        eofcheck = fgets(input, MAXSTRING, stdin);
         
         if (eofcheck == NULL)           // i.e. we HAVE reached EOF
         {
@@ -1127,7 +1180,7 @@ int main(int argc, char ** argv)
             tokens[n][0] = '\0';        // Clear the token in case there isn't one in this slot
             if (tmp != NULL)
             {
-                mod_strncpy(tokens[n], tmp, MAXTOKENSIZE);
+                mod_strncpy(tokens[n], tmp, SMALLSTRING);
                 token_count += 1;
                 tmp = strtok(NULL, " \t\n\r");
             }
@@ -1260,6 +1313,57 @@ int main(int argc, char ** argv)
             continue;
         }
         
+        // ----------------------------------------- QUOTE ---------------------------------------------------------------
+        
+        if (strcmp("QUOTE", tokens[0]) == 0)
+        {
+            // Quotes are currently hideously inefficient, generated from scratch each time. Could FIXME.
+            
+            ts = new_timestamp();
+
+            bidSize = get_size_from_level(FirstBidLevel);
+            bidDepth = get_depth(FirstBidLevel);
+            askSize = get_size_from_level(FirstAskLevel);
+            askDepth = get_depth(FirstAskLevel);
+            
+            assert(1);
+            
+            // Add all the fields that are always present...
+            snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %d, "
+                                         "\"askSize\": %d, \"bidDepth\": %d, \"askDepth\": %d, \"quoteTime\": \"%s\"",
+                     Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
+            
+            assert(1);
+            
+            if (FirstBidLevel)
+            {
+                bid = FirstBidLevel->price;
+                snprintf(part, MAXSTRING, ", \"bid\": %d", bid);
+                strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
+            }
+
+            if (FirstAskLevel)
+            {
+                ask = FirstAskLevel->price;
+                snprintf(part, MAXSTRING, ", \"ask\": %d", ask);
+                strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
+            }
+            
+            if (LastTradeTime)
+            {
+                snprintf(part, MAXSTRING, ", \"lastTrade\": \"%s\", \"lastSize\": %d, \"last\": %d", LastTradeTime, LastSize, LastPrice);
+                strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
+            }
+
+            strncat(buildup, "}", MAXSTRING - strlen(buildup) - 1);
+            
+            printf("%s", buildup);
+            
+            free(ts);
+            end_message();
+            continue;
+        }
+            
         // ------------------------------ FRONT-END REQUEST FOR ACCOUNT OF ORDER -----------------------------------------
         
         if (strcmp("__ACC_FROM_ID__", tokens[0]) == 0)

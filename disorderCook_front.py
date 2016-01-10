@@ -42,6 +42,7 @@ BAD_TYPE = {"ok": False, "error": "A value in the POST had the wrong type"}
 BAD_VALUE = {"ok": False, "error": "Illegal value (usually a non-positive number)"}
 BAD_NAME = {"ok": False, "error": "Unacceptable length of account, venue, or symbol"}
 TOO_MANY_ACCOUNTS = {"ok": False, "error": "Maximum number of accounts exceeded"}
+DISABLED = {"ok": False, "error": "Disabled or not enabled. (See command line options)"}
 
 # -------------------------------------------------------------------------------------------------------------
 
@@ -310,6 +311,34 @@ def orderbook(venue, symbol):
 
 # -------------------------------------------------------------------------------------------------------------
 
+@route("/ob/api/venues/<venue>/stocks/<symbol>/quote", "GET")
+def quote(venue, symbol):
+
+    try:
+        validate_names(None, venue, symbol)
+    except BadName:
+        response.status = 400
+        return BAD_NAME
+
+    try:
+        create_book_if_needed(venue, symbol)
+    except TooManyBooks:
+        response.status = 400
+        return BOOK_ERROR
+
+    # Now call the process and get a response...
+    
+    try:
+        proc = all_venues[venue][symbol]
+        raw_response = get_response_from_process(proc, "QUOTE")
+        response.headers["Content-Type"] = "application/json"
+        return raw_response
+    except Exception as e:
+        response.status = 500
+        return dict_from_exception(e)
+
+# -------------------------------------------------------------------------------------------------------------
+
 @route("/ob/api/venues/<venue>/stocks/<symbol>/orders/<id>", "GET")
 def status(venue, symbol, id):
     
@@ -478,6 +507,13 @@ def main():
         type = "int",
         help = "Port [default: %default]")
     opt_parser.set_defaults(port = 8000)
+    
+    opt_parser.add_option(
+        "-e", "--extra",
+        dest   = "extra",
+        action = "store_true",
+        help   = "Enable commands that can return excessive responses (all orders on venue)")
+    opt_parser.set_defaults(extra = False)
     
     opts, __ = opt_parser.parse_args()
     
