@@ -1,6 +1,5 @@
 # TODO:
 #
-# Add quote
 # Add status all orders
 # Add status all orders one stock
 
