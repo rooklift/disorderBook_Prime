@@ -1116,16 +1116,12 @@ ORDERNODE * find_ordernode(LEVEL * level, int id)
     
     if (level)
     {
-        ordernode = level->firstordernode;
-        assert(ordernode != NULL);
-        
-        while (ordernode != NULL)
+        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
         {
             if (ordernode->order->id == id)
             {
                 return ordernode;
             }
-            ordernode = ordernode->next;
         }
     }
     
@@ -1317,36 +1313,28 @@ int main(int argc, char ** argv)
             free(ts);
             
             printf("\"asks\": [");
-            level = FirstAskLevel;
             flag = 0;
-            while (level != NULL)
+            for (level = FirstAskLevel; level != NULL; level = level->next)
             {
-                ordernode = level->firstordernode;
-                while (ordernode != NULL)
+                for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
                 {
                     if (flag) printf(", \n");
                     printf("{\"price\": %d, \"qty\": %d, \"isBuy\": false}", ordernode->order->price, ordernode->order->qty);
                     flag = 1;
-                    ordernode = ordernode->next;
                 }
-                level = level->next;
             }
             printf("],\n");
             
             printf("\"bids\": [");
-            level = FirstBidLevel;
             flag = 0;
-            while (level != NULL)
+            for (level = FirstBidLevel; level != NULL; level = level->next)
             {
-                ordernode = level->firstordernode;
-                while (ordernode != NULL)
+                for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
                 {
                     if (flag) printf(", \n");
                     printf("{\"price\": %d, \"qty\": %d, \"isBuy\": true}", ordernode->order->price, ordernode->order->qty);
                     flag = 1;
-                    ordernode = ordernode->next;
                 }
-                level = level->next;
             }
             printf("]}");
             
