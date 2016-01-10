@@ -508,32 +508,26 @@ void run_order(ORDER * order)
     
     if (order->direction == SELL)
     {
-        current_level = FirstBidLevel;
-        while (current_level != NULL)
+        for (current_level = FirstBidLevel; current_level != NULL; current_level = current_level->next)
         {
             if (current_level->price < order->price && order->orderType != MARKET) return;
-            current_node = current_level->firstordernode;
-            while (current_node != NULL)
+            
+            for (current_node = current_level->firstordernode; current_node != NULL; current_node = current_node->next)
             {
                 cross(current_node->order, order);
                 if (order->open == 0) return;
-                current_node = current_node->next;
             }
-            current_level = current_level->next;
         }
     } else {
-        current_level = FirstAskLevel;
-        while (current_level != NULL)
+        for (current_level = FirstAskLevel; current_level != NULL; current_level = current_level->next)
         {
             if (current_level->price > order->price && order->orderType != MARKET) return;
-            current_node = current_level->firstordernode;
-            while (current_node != NULL)
+
+            for (current_node = current_level->firstordernode; current_node != NULL; current_node = current_node->next)
             {
                 cross(current_node->order, order);
                 if (order->open == 0) return;
-                current_node = current_node->next;
             }
-            current_level = current_level->next;
         }
     }
     
