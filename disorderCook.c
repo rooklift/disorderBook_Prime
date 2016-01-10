@@ -23,6 +23,7 @@
     
     Other commands:
     
+    QUOTE
     ORDERBOOK
     CANCEL <id>
     STATUS <id>
@@ -1326,14 +1327,10 @@ int main(int argc, char ** argv)
             askSize = get_size_from_level(FirstAskLevel);
             askDepth = get_depth(FirstAskLevel);
             
-            assert(1);
-            
             // Add all the fields that are always present...
             snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %d, "
                                          "\"askSize\": %d, \"bidDepth\": %d, \"askDepth\": %d, \"quoteTime\": \"%s\"",
                      Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
-            
-            assert(1);
             
             if (FirstBidLevel)
             {
