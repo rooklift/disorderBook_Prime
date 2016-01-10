@@ -6,8 +6,6 @@ TEST_TIME = 10
 
 proc = subprocess.Popen(['disorderCook.exe', "SELLEX", "CATS"], shell = False, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
 
-starttime = time.clock()
-
 def get_response_from_process(proc, message):       # MUST MATCH THE REAL THING IN THE FRONTEND, ELSE DEADLOCK
     assert(isinstance(message, str))
 
@@ -28,10 +26,12 @@ def get_response_from_process(proc, message):       # MUST MATCH THE REAL THING 
         else:
             result += line
 
-n = 0
+# ----------------------------------------------------------------------
 
+print("Placing many orders...")
 all_account_ids = dict()
-
+starttime = time.clock()
+n = 0
 while 1:
     # print(n)
     n += 1
@@ -58,5 +58,21 @@ print("= {} per second".format(n // TEST_TIME))
 
 debug_info = get_response_from_process(proc, "__DEBUG_MEMORY__")
 print(debug_info)
+
+
+print("Getting many quotes...")
+starttime = time.clock()
+n = 0
+while 1:
+    n += 1
+    raw_response = get_response_from_process(proc, "QUOTE")
+    # print(raw_response)
+    
+    # time.sleep(0.01)
+    if time.clock() - starttime > TEST_TIME:
+        break
+
+print("{} quotes received in {} seconds".format(n, TEST_TIME))
+print("= {} per second".format(n // TEST_TIME))
 
 input()
