@@ -4,7 +4,7 @@ import time
 
 TEST_TIME = 10
 
-proc = subprocess.Popen(['disorderCook.exe', "SELLEX", "CATS"], shell = False, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
+proc = subprocess.Popen(['./disorderCook.exe', "SELLEX", "CATS"], shell = False, stdin = subprocess.PIPE, stdout = subprocess.PIPE)
 
 def get_response_from_process(proc, message):       # MUST MATCH THE REAL THING IN THE FRONTEND, ELSE DEADLOCK
     assert(isinstance(message, str))

@@ -78,7 +78,7 @@ def create_book_if_needed(venue, symbol):
         if opts.maxbooks > 0:
             if current_book_count + 1 > opts.maxbooks:
                 raise TooManyBooks
-        all_venues[venue][symbol] = subprocess.Popen(['disorderCook.exe', venue, symbol],
+        all_venues[venue][symbol] = subprocess.Popen(['./disorderCook.exe', venue, symbol],
                                                      shell = False,
                                                      stdin = subprocess.PIPE,
                                                      stdout = subprocess.PIPE,
@@ -475,6 +475,30 @@ def scores(venue, symbol):
     except Exception as e:
         response.status = 500
         return dict_from_exception(e)
+
+# -------------------------------------------------------------------------------------------------------------
+
+@route("/", "GET")
+@route("/ob/api/", "GET")
+def home():
+    return """
+    <pre>
+    
+    disorderCook: unofficial Stockfighter server
+    https://github.com/fohristiwhirl/disorderCook
+    
+    By Amtiskaw (Fohristiwhirl on GitHub)
+    With help from cite-reader, Medecau and DanielVF
+    
+    Mad props to patio11 for the elegant fundamental design!
+    Also inspired by eu90h's Mockfighter
+    
+    
+    
+    "Combining the mollycoddling safety of C with
+    the blistering speed of Python since 2016"
+    </pre>
+    """
 
 # -------------------------------------------------------------------------------------------------------------
 
