@@ -1,6 +1,6 @@
 # disorderCook
 
-This is a rewrite of my **[Stockfighter](http://stockfighter.io)** server, **[disorderBook](https://github.com/fohristiwhirl/disorderBook)** using C for the backend. The frontend is still in Python.
+This is a rewrite of my **[Stockfighter](http://stockfighter.io)** server **[disorderBook](https://github.com/fohristiwhirl/disorderBook)**, using C for the backend. The frontend is still in Python.
 
 ## Usage
 
