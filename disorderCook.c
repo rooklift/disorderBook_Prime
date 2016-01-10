@@ -1,8 +1,8 @@
 /*  Crazy attempt to write the disorderBook backend in C.
     The data layout stolen from DanielVF.
    
-    We store all data in memory so that the user can retrieve it later via
-    yet-to-be-written functions. As such, there are very few free() calls.
+    We store all data in memory so that the user can retrieve it later.
+    As such, there are very few free() calls.
 
 
     PROTOCOL:
@@ -27,6 +27,8 @@
     ORDERBOOK
     CANCEL <id>
     STATUS <id>
+    __SCORE__
+    __DEBUG_MEMORY__
     __ACC_FROM_ID__ <id>
     
     This last is not a direct response to a user query, but can be used by the
