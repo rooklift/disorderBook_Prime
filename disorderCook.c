@@ -786,20 +786,14 @@ int fok_can_buy(int qty, int price)
     LEVEL * level;
     ORDERNODE * ordernode;
     
-    level = FirstAskLevel;
-    while (level != NULL && level->price <= price)
+    for (level = FirstAskLevel; level != NULL && level->price <= price; level = level->next)
     {
-        ordernode = level->firstordernode;
-        while (ordernode != NULL)
+        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
         {
             qty -= ordernode->order->qty;
-            if (qty <= 0)
-            {
-                return 1;
-            }
-            ordernode = ordernode->next;
+            if (qty <= 0) return 1;
         }
-        level = level->next;
+        
     }
     
     return 0;
@@ -813,20 +807,14 @@ int fok_can_sell(int qty, int price)
     LEVEL * level;
     ORDERNODE * ordernode;
     
-    level = FirstBidLevel;
-    while (level != NULL && level->price >= price)
+    for (level = FirstBidLevel; level != NULL && level->price >= price; level = level->next)
     {
-        ordernode = level->firstordernode;
-        while (ordernode != NULL)
+        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
         {
             qty -= ordernode->order->qty;
-            if (qty <= 0)
-            {
-                return 1;
-            }
-            ordernode = ordernode->next;
+            if (qty <= 0) return 1;
         }
-        level = level->next;
+        
     }
     
     return 0;
