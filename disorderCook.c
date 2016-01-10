@@ -37,6 +37,7 @@
     */
 
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +58,7 @@
 #define MAXORDERS 2000000000        // Not going all the way to MAX_INT, because various numbers might go above this
                   
 #define TOO_MANY_ORDERS 1
+#define SILLY_VALUE 2
 
 
 typedef struct Fill_struct {
@@ -76,6 +78,10 @@ typedef struct Account_struct {
     struct Order_struct ** orders;
     int arraylen;
     int count;
+    int posmin;
+    int posmax;
+    int shares;
+    int cents;
 } ACCOUNT;
 
 typedef struct Order_struct {
@@ -137,7 +143,7 @@ LEVEL * FirstBidLevel = NULL;
 LEVEL * FirstAskLevel = NULL;
 
 char * LastTradeTime = NULL;
-int LastPrice = -1;
+int LastPrice = -1;             // Don't change this now, is checked by score function
 int LastSize = -1;
 
 ORDER ** AllOrders = NULL;
@@ -352,6 +358,71 @@ ORDER_AND_ERROR * init_o_and_e()
 }
 
 
+void update_account(ACCOUNT * account, int quantity, int price, int direction)
+{
+    int64_t tmp64;
+    
+    assert(account);
+
+    // Update shares...
+    
+    if (direction == BUY)
+    {
+        if (account->shares > 0)
+        {
+            if ((2147483647 - account->shares) - quantity < 0)
+            {
+                account->shares = 2147483647;
+            } else {
+                account->shares += quantity;
+            }
+        } else {
+            account->shares += quantity;
+        }
+    } else {
+        if (account->shares < 0)
+        {
+            if ((-2147483647 - account->shares) + quantity > 0)         // Don't write -2147483648
+            {
+                account->shares = -2147483647;
+            } else {
+                account->shares -= quantity;
+            }
+        } else {
+            account->shares -= quantity;
+        }
+    }
+    
+    // Update cents...
+    
+    tmp64 = account->cents;
+    
+    if (direction == BUY)
+    {
+        tmp64 -= (int64_t) price * (int64_t) quantity;
+        if (tmp64 < -2147483647)
+        {
+            account->cents = -2147483647;
+        } else {
+            account->cents = (int) tmp64;
+        }
+    } else {
+        tmp64 += (int64_t) price * (int64_t) quantity;
+        if (tmp64 > 2147483647)
+        {
+            account->cents = 2147483647;
+        } else {
+            account->cents = (int) tmp64;
+        }
+    }
+    
+    if (account->shares < account->posmin) account->posmin = account->shares;
+    if (account->shares > account->posmax) account->posmax = account->shares;
+    
+    return;
+}
+
+
 void cross(ORDER * standing, ORDER * incoming)
 {
     int quantity;
@@ -412,6 +483,17 @@ void cross(ORDER * standing, ORDER * incoming)
     
     if (standing->qty == 0) standing->open = 0;
     if (incoming->qty == 0) incoming->open = 0;
+    
+    // Fix the positions of the 2 accounts...
+    
+    if (standing->direction == BUY)
+    {
+        update_account(standing->account, quantity, price, BUY);
+        update_account(incoming->account, quantity, price, SELL);
+    } else {
+        update_account(standing->account, quantity, price, SELL);
+        update_account(incoming->account, quantity, price, BUY);
+    }
     
     return;
 }
@@ -770,6 +852,11 @@ ACCOUNT * init_account(char * name)
     ret->arraylen = 0;
     ret->count = 0;
     
+    ret->posmin = 0;
+    ret->posmax = 0;
+    ret->shares = 0;
+    ret->cents = 0;
+    
     return ret;
 }
 
@@ -847,6 +934,14 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
     if (id >= MAXORDERS)
     {
         o_and_e->error = TOO_MANY_ORDERS;
+        return o_and_e;
+    }
+    
+    // Check for silly values...
+    
+    if (price < 0 || qty < 1 || (direction != SELL && direction != BUY))
+    {
+        o_and_e->error = SILLY_VALUE;
         return o_and_e;
     }
     
@@ -1157,6 +1252,8 @@ int main(int argc, char ** argv)
     int bidDepth;
     int askSize;
     int askDepth;
+    int64_t nav64;
+    ACCOUNT * account;
     
     assert(argc == 3);
     
@@ -1405,6 +1502,43 @@ int main(int argc, char ** argv)
             continue;
         }
         
+        // ---------------------------------------- SCORES ---------------------------------------------------------------
+        
+        if (strcmp("__SCORES__", tokens[0]) == 0)
+        {
+            printf("<pre>%s %s\n", Venue, Symbol);
+
+            if (LastPrice == -1)
+            {
+                printf("No trading activity yet.</pre>");
+                end_message();
+                continue;
+            }
+            
+            printf("Current price: $%d.%02d\n\n", LastPrice / 100, LastPrice % 100);
+            
+            printf("             Account           USD $          Shares         Pos.min         Pos.max           NAV $\n");
+            
+            for (n = 0; n < CurrentAccountArrayLen; n++)
+            {
+                if (AllAccounts[n])
+                {
+                    account = AllAccounts[n];
+                    
+                    nav64 = account->cents + account->shares * LastPrice;
+                    if (nav64 > 2147483647) nav64 = 2147483647;
+                    if (nav64 < -2147483647) nav64 = -2147483647;
+                    
+                    printf("%20s %15d %15d %15d %15d %15d\n",
+                           account->name, account->cents / 100, account->shares, account->posmin, account->posmax, (int) nav64 / 100);
+                }
+            }
+            printf("</pre>");
+            
+            end_message();
+            continue;
+        }
+
         // ---------------------------------------------------------------------------------------------------------------
         
         printf("{\"ok\": false, \"error\": \"Did not comprehend\"}");

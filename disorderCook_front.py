@@ -120,7 +120,7 @@ def get_response_from_process(proc, message):
 
 def validate_names(account = None, venue = None, symbol = None):        # If nothing else, these
     if account is not None:                                             # things should be below
-        if not 0 < len(account) < 20:                                   # the C var MAXTOKENSIZE
+        if not 0 < len(account) < 20:                                   # the C var SMALLSTRING.
             raise BadName
     if venue is not None:
         if not 0 < len(venue) < 20:
@@ -459,6 +459,25 @@ def cancel(venue, symbol, id):
 
 # -------------------------------------------------------------------------------------------------------------
 
+@route("/ob/api/venues/<venue>/stocks/<symbol>/scores", "GET")
+def scores(venue, symbol):
+    
+    try:
+    
+        if venue not in all_venues or symbol not in all_venues[venue]:
+            response.status = 404
+            return "<pre>No such venue/stock!</pre>"
+        else:
+            proc = all_venues[venue][symbol]
+
+        raw_response = get_response_from_process(proc, "__SCORES__")
+        return raw_response
+    
+    except Exception as e:
+        response.status = 500
+        return dict_from_exception(e)
+
+# -------------------------------------------------------------------------------------------------------------
 
 def create_auth_records():
     global auth
