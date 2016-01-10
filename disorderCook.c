@@ -268,7 +268,7 @@ int next_id(int no_iterate_flag)
 }
 
 
-// strlcpy stolen straight from OpenBSD
+// strlcpy borrowed from OpenBSD
 // Copyright (c) 1998 Todd C. Miller
 //
 // BSD License (as is disorderCook)
