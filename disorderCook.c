@@ -268,14 +268,35 @@ int next_id(int no_iterate_flag)
 }
 
 
-char * mod_strncpy(char * s1, const char * s2, int max)
+// strlcpy stolen straight from OpenBSD
+// Copyright (c) 1998 Todd C. Miller
+//
+// BSD License (as is disorderCook)
+// I renamed the function in case the compiler already knows about strlcpy
+
+size_t bk_strlcpy(char * dst, const char * src, size_t siz)
 {
-    char * ret;
+    char * d = dst;
+    const char * s = src;
+    size_t n = siz;
 
-    ret = strncpy(s1, s2, max);
-    s1[max - 1] = '\0';
+    // Copy as many bytes as will fit
+    if (n != 0 && --n != 0) {
+        do {
+            if ((*d++ = *s++) == 0)
+                break;
+        } while (--n != 0);
+    }
 
-    return ret;
+    // Not enough room in dst, add NUL and traverse rest of src
+    if (n == 0) {
+        if (siz != 0)
+            *d = '\0';      // NUL-terminate dst
+        while (*s++)
+            ;
+    }
+
+    return(s - src - 1);    // count does not include NUL
 }
 
 
@@ -830,7 +851,7 @@ ACCOUNT * init_account(char * name)
     ret = malloc(sizeof(ACCOUNT));
     check_ptr_or_quit(ret);
     
-    mod_strncpy(ret->name, name, SMALLSTRING);
+    bk_strlcpy(ret->name, name, SMALLSTRING);
     
     ret->orders = NULL;
     ret->arraylen = 0;
@@ -1028,15 +1049,15 @@ void print_order(ORDER * order)
     
     if (order->orderType == LIMIT)
     {
-        mod_strncpy(orderType_to_print, "limit", SMALLSTRING);
+        bk_strlcpy(orderType_to_print, "limit", SMALLSTRING);
     } else if (order->orderType == MARKET) {
-        mod_strncpy(orderType_to_print, "market", SMALLSTRING);
+        bk_strlcpy(orderType_to_print, "market", SMALLSTRING);
     } else if (order->orderType == IOC) {
-        mod_strncpy(orderType_to_print, "immediate-or-cancel", SMALLSTRING);
+        bk_strlcpy(orderType_to_print, "immediate-or-cancel", SMALLSTRING);
     } else if (order->orderType == FOK) {
-        mod_strncpy(orderType_to_print, "fill-or-kill", SMALLSTRING);
+        bk_strlcpy(orderType_to_print, "fill-or-kill", SMALLSTRING);
     } else {
-        mod_strncpy(orderType_to_print, "unknown", SMALLSTRING);
+        bk_strlcpy(orderType_to_print, "unknown", SMALLSTRING);
     }
     
     printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
@@ -1241,8 +1262,8 @@ int main(int argc, char ** argv)
     
     assert(argc == 3);
     
-    mod_strncpy(Venue, argv[1], SMALLSTRING);
-    mod_strncpy(Symbol, argv[2], SMALLSTRING);
+    bk_strlcpy(Venue, argv[1], SMALLSTRING);
+    bk_strlcpy(Symbol, argv[2], SMALLSTRING);
     
     while (1)
     {
@@ -1262,7 +1283,7 @@ int main(int argc, char ** argv)
             tokens[n][0] = '\0';        // Clear the token in case there isn't one in this slot
             if (tmp != NULL)
             {
-                mod_strncpy(tokens[n], tmp, SMALLSTRING);
+                bk_strlcpy(tokens[n], tmp, SMALLSTRING);
                 token_count += 1;
                 tmp = strtok(NULL, " \t\n\r");
             }
