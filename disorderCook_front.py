@@ -1,8 +1,3 @@
-# TODO:
-#
-# Add status all orders
-# Add status all orders one stock
-
 import json
 import optparse
 import subprocess
@@ -42,6 +37,7 @@ BAD_VALUE = {"ok": False, "error": "Illegal value (usually a non-positive number
 BAD_NAME = {"ok": False, "error": "Unacceptable length of account, venue, or symbol"}
 TOO_MANY_ACCOUNTS = {"ok": False, "error": "Maximum number of accounts exceeded"}
 DISABLED = {"ok": False, "error": "Disabled or not enabled. (See command line options)"}
+NO_ALL_ORDERS_COMMAND = {"ok": False, "error": "Not implemented. Try the status all orders (one stock) command instead"}
 
 # -------------------------------------------------------------------------------------------------------------
 
@@ -338,6 +334,76 @@ def quote(venue, symbol):
 
 # -------------------------------------------------------------------------------------------------------------
 
+@route("/ob/api/venues/<venue>/accounts/<account>/orders", "GET")
+def status_all_orders(venue, account):
+
+    # This could return a stupid amount of data (if it were implemented) and is disabled by default...
+    if not opts.excess:
+        response.status = 403
+        return DISABLED
+    
+    # It's also disabled by non-default...
+    
+    response.status = 403
+    return NO_ALL_ORDERS_COMMAND
+
+# -------------------------------------------------------------------------------------------------------------
+        
+@route("/ob/api/venues/<venue>/accounts/<account>/stocks/<symbol>/orders", "GET")
+def status_all_orders_one_stock(venue, account, symbol):
+
+    # This can return a stupid amount of data and is disabled by default...
+    if not opts.excess:
+        response.status = 403
+        return DISABLED
+    
+    try:
+        validate_names(account, venue, symbol)
+    except BadName:
+        response.status = 400
+        return BAD_NAME
+
+    try:
+        create_book_if_needed(venue, symbol)
+    except TooManyBooks:
+        response.status = 400
+        return BOOK_ERROR
+    
+    if account not in account_ints:
+        if len(account_ints) < MAXACCOUNTS:
+            account_ints[account] = len(account_ints)
+        else:
+            response.status = 500
+            return TOO_MANY_ACCOUNTS
+
+    try:
+    
+        if auth:
+            try:
+                apikey = api_key_from_headers(request.headers)
+            except NoApiKey:
+                response.status = 401
+                return NO_AUTH_ERROR
+
+            if account not in auth:
+                response.status = 401
+                return AUTH_FAILURE
+
+            if auth[account] != apikey:
+                response.status = 401
+                return AUTH_FAILURE
+
+        proc = all_venues[venue][symbol]
+        raw_response = get_response_from_process(proc, "STATUSALL {}".format(account_ints[account]))
+        response.headers["Content-Type"] = "application/json"
+        return raw_response
+
+    except Exception as e:
+        response.status = 500
+        return dict_from_exception(e)
+
+# -------------------------------------------------------------------------------------------------------------
+
 @route("/ob/api/venues/<venue>/stocks/<symbol>/orders/<id>", "GET")
 def status(venue, symbol, id):
     
@@ -551,11 +617,11 @@ def main():
     opt_parser.set_defaults(port = 8000)
     
     opt_parser.add_option(
-        "-e", "--extra",
-        dest   = "extra",
+        "-e", "--extra", "--excess",
+        dest   = "excess",
         action = "store_true",
         help   = "Enable commands that can return excessive responses (all orders on venue)")
-    opt_parser.set_defaults(extra = False)
+    opt_parser.set_defaults(excess = False)
     
     opts, __ = opt_parser.parse_args()
     

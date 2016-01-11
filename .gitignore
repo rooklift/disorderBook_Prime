@@ -13,4 +13,5 @@ disorderCook.exe
 
 # Other files:
 disorderCook_with_auth.bat
+disorderCook_with_excess.bat
 accounts.json

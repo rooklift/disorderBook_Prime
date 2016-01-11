@@ -1237,24 +1237,25 @@ int main(int argc, char ** argv)
     
     int n;
     int flag;
-    ORDER_AND_ERROR * o_and_e;
-    LEVEL * level;
-    ORDERNODE * ordernode;
     int price;
     int id;
     int dir;
     int orderType;
-    char * ts;
-    char buildup[MAXSTRING];
-    char part[MAXSTRING];
     int bid;
     int ask;
     int bidSize;
     int bidDepth;
     int askSize;
     int askDepth;
+    char buildup[MAXSTRING];
+    char part[MAXSTRING];
+    char * ts;
     int64_t nav64;
+    ORDER_AND_ERROR * o_and_e;
+    ORDERNODE * ordernode;
+    ORDER * order;
     ACCOUNT * account;
+    LEVEL * level;
     
     assert(argc == 3);
     
@@ -1355,6 +1356,38 @@ int main(int argc, char ** argv)
             }
             
             print_order(AllOrders[id]);
+            
+            end_message();
+            continue;
+        }
+        
+        // --------------------------------- ALL ORDERS OF AN ACCOUNT ----------------------------------------------------
+        
+        // This can return a stupid amount of data. Frontend might want to not honour requests for this.
+        
+        if (strcmp("STATUSALL", tokens[0]) == 0)
+        {
+            id = atoi(tokens[1]);       // id is an account id in this case
+            if (id < 0 || id >= CurrentAccountArrayLen || AllAccounts[id] == NULL)
+            {
+                printf("{\"ok\": false, \"error\": \"Account not known on this book\"}");
+                end_message();
+                continue;
+            }
+            
+            account = AllAccounts[id];
+            
+            printf("{\"ok\": true, \"venue\": \"%s\", \"orders\": [", Venue);
+            
+            flag = 0;
+            for (n = 0; n < account->count; n++)
+            {
+                if (flag) printf(", \n");
+                print_order(account->orders[n]);
+                flag = 1;
+            }
+            
+            printf("]}");
             
             end_message();
             continue;
