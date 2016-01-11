@@ -1544,7 +1544,31 @@ int main (int argc, char ** argv)
                 {
                     account = AllAccounts[n];
                     
-                    nav64 = account->cents + account->shares * LastPrice;
+                    // NAV will be printed as 32-bit, but we calculate it using 64 bits.
+                    //
+                    // We go through a huge amount of rigmarole to avoid overflows of the 64-bit number...
+                    // The value of our position is guaranteed to fit inside a 64-bit int, but when we add
+                    // our cash to it, it might overflow.
+                    
+                    nav64 = (int64_t) account->shares * (int64_t) LastPrice;    // Cash not counted yet
+                    
+                    if (nav64 > 0)
+                    {
+                        if (nav64 - 2147483647 > 2147483647)
+                        {
+                            nav64 = 2147483647;         // NAV (sans cash) is huge enough, our cash is irrelevant
+                        } else {
+                            nav64 += account->cents;    // NAV (sans cash) is small enough, we can add a 32-bit number to it
+                        }
+                    } else {
+                        if (nav64 + 2147483647 < -2147483647)
+                        {
+                            nav64 = -2147483647;
+                        } else {
+                            nav64 += account->cents;
+                        }
+                    }
+                    
                     if (nav64 > 2147483647) nav64 = 2147483647;
                     if (nav64 < -2147483647) nav64 = -2147483647;
                     
