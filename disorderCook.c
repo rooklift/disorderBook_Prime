@@ -27,6 +27,7 @@
     ORDERBOOK
     CANCEL <id>
     STATUS <id>
+    STATUSALL <account_id>
     __SCORE__
     __DEBUG_MEMORY__
     __ACC_FROM_ID__ <id>
