@@ -162,7 +162,7 @@ DEBUG_INFO DebugInfo = {0};     // Think global is auto-zeroed anyway, but whate
 // ------------------------------------------------------------------------------------------
 
 
-void end_message(void)
+void end_message (void)
 {
     printf("\nEND\n");
     fflush(stdout);
@@ -170,7 +170,7 @@ void end_message(void)
 }
 
 
-void check_ptr_or_quit(void * ptr)
+void check_ptr_or_quit (void * ptr)
 {
     if (ptr == NULL)
     {
@@ -182,7 +182,7 @@ void check_ptr_or_quit(void * ptr)
 }
 
 
-LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
+LEVEL * init_level (int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
 {
     LEVEL * ret;
     
@@ -200,7 +200,7 @@ LEVEL * init_level(int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
 }
 
 
-FILL * init_fill(int price, int qty, char * ts)
+FILL * init_fill (int price, int qty, char * ts)
 {
     FILL * ret;
     
@@ -217,7 +217,7 @@ FILL * init_fill(int price, int qty, char * ts)
 }
 
 
-FILLNODE * init_fillnode(FILL * fill, FILLNODE * prev, FILLNODE * next)
+FILLNODE * init_fillnode (FILL * fill, FILLNODE * prev, FILLNODE * next)
 {
     FILLNODE * ret;
     
@@ -234,7 +234,7 @@ FILLNODE * init_fillnode(FILL * fill, FILLNODE * prev, FILLNODE * next)
 }
 
 
-ORDERNODE * init_ordernode(ORDER * order, ORDERNODE * prev, ORDERNODE * next)
+ORDERNODE * init_ordernode (ORDER * order, ORDERNODE * prev, ORDERNODE * next)
 {
     ORDERNODE * ret;
     
@@ -251,7 +251,7 @@ ORDERNODE * init_ordernode(ORDER * order, ORDERNODE * prev, ORDERNODE * next)
 }
 
 
-int next_id(int no_iterate_flag)
+int next_id (int no_iterate_flag)
 {
     static int id = 0;
     
@@ -269,39 +269,27 @@ int next_id(int no_iterate_flag)
 }
 
 
-// strlcpy borrowed from OpenBSD
-// Copyright (c) 1998 Todd C. Miller
-//
-// BSD License (as is disorderCook)
-// I renamed the function in case the compiler already knows about strlcpy
+// Various safer strcpy functions exist. I thought of dumping
+// strlcpy() into the file but it's written in the confusing
+// do-4-things-at-once style. Instead, this function does the
+// same (minus the return value, which I have no need for here).
 
-size_t bk_strlcpy(char * dst, const char * src, size_t siz)
+void safe_strcpy (char * dest, char * source, size_t size)
 {
-    char * d = dst;
-    const char * s = src;
-    size_t n = siz;
-
-    // Copy as many bytes as will fit
-    if (n != 0 && --n != 0) {
-        do {
-            if ((*d++ = *s++) == 0)
-                break;
-        } while (--n != 0);
+    size_t n;
+    
+    if (size == 0) return;              // size_t is unsigned, 0 is lowest possible
+    for (n = 0; n < size - 1; n++)
+    {
+        dest[n] = source[n];
+        if (dest[n] == '\0') return;    // Copied whole string
     }
-
-    // Not enough room in dst, add NUL and traverse rest of src
-    if (n == 0) {
-        if (siz != 0)
-            *d = '\0';      // NUL-terminate dst
-        while (*s++)
-            ;
-    }
-
-    return(s - src - 1);    // count does not include NUL
+    dest[size - 1] = '\0';              // Truncated (or copied all if size was exactly right)
+    return;
 }
 
 
-char * new_timestamp(void)
+char * new_timestamp (void)
 {
     char * timestamp;
     time_t t;
@@ -330,7 +318,7 @@ char * new_timestamp(void)
 }
 
 
-ORDER * init_order(ACCOUNT * account, int qty, int price, int direction, int orderType, int id)
+ORDER * init_order (ACCOUNT * account, int qty, int price, int direction, int orderType, int id)
 {
     ORDER * ret;
     
@@ -368,7 +356,7 @@ ORDER * init_order(ACCOUNT * account, int qty, int price, int direction, int ord
 }
 
 
-ORDER_AND_ERROR * init_o_and_e()
+ORDER_AND_ERROR * init_o_and_e (void)
 {
     ORDER_AND_ERROR * ret;
     
@@ -382,7 +370,7 @@ ORDER_AND_ERROR * init_o_and_e()
 }
 
 
-void update_account(ACCOUNT * account, int quantity, int price, int direction)
+void update_account (ACCOUNT * account, int quantity, int price, int direction)
 {
     int64_t tmp64;
     
@@ -447,7 +435,7 @@ void update_account(ACCOUNT * account, int quantity, int price, int direction)
 }
 
 
-void cross(ORDER * standing, ORDER * incoming)
+void cross (ORDER * standing, ORDER * incoming)
 {
     int quantity;
     int price;
@@ -523,7 +511,7 @@ void cross(ORDER * standing, ORDER * incoming)
 }
 
 
-void run_order(ORDER * order)
+void run_order (ORDER * order)
 {
     LEVEL * current_level;
     ORDERNODE * current_node;
@@ -557,7 +545,7 @@ void run_order(ORDER * order)
 }
 
 
-void cleanup_closed_bids(void)
+void cleanup_closed_bids (void)
 {
     LEVEL * current_level;
     LEVEL * old_level;
@@ -607,7 +595,7 @@ void cleanup_closed_bids(void)
 }
 
 
-void cleanup_closed_asks(void)      // This and the above could be consolidated into a single function...
+void cleanup_closed_asks (void)     // This and the above could be consolidated into a single function...
 {
     LEVEL * current_level;
     LEVEL * old_level;
@@ -657,7 +645,7 @@ void cleanup_closed_asks(void)      // This and the above could be consolidated 
 }
 
     
-void insert_ask(ORDER * order)
+void insert_ask (ORDER * order)
 {
     ORDERNODE * ordernode;
     ORDERNODE * current_node;
@@ -729,7 +717,7 @@ void insert_ask(ORDER * order)
 }
 
 
-void insert_bid(ORDER * order)
+void insert_bid (ORDER * order)
 {
     ORDERNODE * ordernode;
     ORDERNODE * current_node;
@@ -801,7 +789,7 @@ void insert_bid(ORDER * order)
 }
 
 
-int fok_can_buy(int qty, int price)
+int fok_can_buy (int qty, int price)
 {
     // Must use subtraction only. Adding could overflow.
     
@@ -822,7 +810,7 @@ int fok_can_buy(int qty, int price)
 }
 
 
-int fok_can_sell(int qty, int price)
+int fok_can_sell (int qty, int price)
 {
     // Must use subtraction only. Adding could overflow.
     
@@ -843,7 +831,7 @@ int fok_can_sell(int qty, int price)
 }
 
 
-ACCOUNT * init_account(char * name)
+ACCOUNT * init_account (char * name)
 {
     ACCOUNT * ret;
     
@@ -852,7 +840,7 @@ ACCOUNT * init_account(char * name)
     ret = malloc(sizeof(ACCOUNT));
     check_ptr_or_quit(ret);
     
-    bk_strlcpy(ret->name, name, SMALLSTRING);
+    safe_strcpy(ret->name, name, SMALLSTRING);
     
     ret->orders = NULL;
     ret->arraylen = 0;
@@ -904,7 +892,7 @@ ACCOUNT * account_lookup_or_create (char * account_name, int account_int)
 }
 
 
-void add_order_to_account(ORDER * order, ACCOUNT * accountobject)
+void add_order_to_account (ORDER * order, ACCOUNT * accountobject)
 {
     if (accountobject->count == accountobject->arraylen)
     {
@@ -921,7 +909,7 @@ void add_order_to_account(ORDER * order, ACCOUNT * accountobject)
 }
 
 
-ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int price, int direction, int orderType)
+ORDER_AND_ERROR * parse_order (char * account_name, int account_int, int qty, int price, int direction, int orderType)
 {
     // Note: account_name will be in the stack of the calling function, not in the heap
     
@@ -1018,7 +1006,7 @@ ORDER_AND_ERROR * parse_order(char * account_name, int account_int, int qty, int
 }
 
 
-void print_fills(ORDER * order)
+void print_fills (ORDER * order)
 {
     FILLNODE * fillnode;
     
@@ -1044,21 +1032,21 @@ void print_fills(ORDER * order)
 }
 
 
-void print_order(ORDER * order)
+void print_order (ORDER * order)
 {
     char orderType_to_print[SMALLSTRING];
     
     if (order->orderType == LIMIT)
     {
-        bk_strlcpy(orderType_to_print, "limit", SMALLSTRING);
+        safe_strcpy(orderType_to_print, "limit", SMALLSTRING);
     } else if (order->orderType == MARKET) {
-        bk_strlcpy(orderType_to_print, "market", SMALLSTRING);
+        safe_strcpy(orderType_to_print, "market", SMALLSTRING);
     } else if (order->orderType == IOC) {
-        bk_strlcpy(orderType_to_print, "immediate-or-cancel", SMALLSTRING);
+        safe_strcpy(orderType_to_print, "immediate-or-cancel", SMALLSTRING);
     } else if (order->orderType == FOK) {
-        bk_strlcpy(orderType_to_print, "fill-or-kill", SMALLSTRING);
+        safe_strcpy(orderType_to_print, "fill-or-kill", SMALLSTRING);
     } else {
-        bk_strlcpy(orderType_to_print, "unknown", SMALLSTRING);
+        safe_strcpy(orderType_to_print, "unknown", SMALLSTRING);
     }
     
     printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
@@ -1072,7 +1060,7 @@ void print_order(ORDER * order)
 }
 
 
-LEVEL * find_level(int price, int dir)      // Return ptr to level, or return NULL if not present
+LEVEL * find_level (int price, int dir)      // Return ptr to level, or return NULL if not present
 {
     LEVEL * level = NULL;
             
@@ -1111,7 +1099,7 @@ LEVEL * find_level(int price, int dir)      // Return ptr to level, or return NU
 }
 
 
-ORDERNODE * find_ordernode(LEVEL * level, int id)
+ORDERNODE * find_ordernode (LEVEL * level, int id)
 {
     ORDERNODE * ordernode;
     
@@ -1130,7 +1118,7 @@ ORDERNODE * find_ordernode(LEVEL * level, int id)
 }
 
 
-void cleanup_after_cancel(ORDERNODE * ordernode, LEVEL * level)       // Free the ordernode, maybe free the level, fix all links
+void cleanup_after_cancel (ORDERNODE * ordernode, LEVEL * level)       // Free the ordernode, maybe free the level, fix all links
 {
     int dir;
     
@@ -1179,7 +1167,7 @@ void cleanup_after_cancel(ORDERNODE * ordernode, LEVEL * level)       // Free th
 }
 
 
-int get_size_from_level(LEVEL * level)
+int get_size_from_level (LEVEL * level)
 {
     ORDERNODE * ordernode;
     int ret;
@@ -1204,7 +1192,7 @@ int get_size_from_level(LEVEL * level)
 }
 
 
-int get_depth(LEVEL * level)        // Returns size of this level and all worse levels (if level exists)
+int get_depth (LEVEL * level)        // Returns size of this level and all worse levels (if level exists)
 {
     int onesize;
     int ret;
@@ -1226,7 +1214,7 @@ int get_depth(LEVEL * level)        // Returns size of this level and all worse 
 }
 
 
-int main(int argc, char ** argv)
+int main (int argc, char ** argv)
 {
     char * eofcheck;
     char * tmp;
@@ -1260,8 +1248,8 @@ int main(int argc, char ** argv)
     
     assert(argc == 3);
     
-    bk_strlcpy(Venue, argv[1], SMALLSTRING);
-    bk_strlcpy(Symbol, argv[2], SMALLSTRING);
+    safe_strcpy(Venue, argv[1], SMALLSTRING);
+    safe_strcpy(Symbol, argv[2], SMALLSTRING);
     
     while (1)
     {
@@ -1281,7 +1269,7 @@ int main(int argc, char ** argv)
             tokens[n][0] = '\0';        // Clear the token in case there isn't one in this slot
             if (tmp != NULL)
             {
-                bk_strlcpy(tokens[n], tmp, SMALLSTRING);
+                safe_strcpy(tokens[n], tmp, SMALLSTRING);
                 token_count += 1;
                 tmp = strtok(NULL, " \t\n\r");
             }
