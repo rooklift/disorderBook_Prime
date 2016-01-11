@@ -28,7 +28,7 @@
     CANCEL <id>
     STATUS <id>
     STATUSALL <account_id>
-    __SCORE__
+    __SCORES__
     __DEBUG_MEMORY__
     __ACC_FROM_ID__ <id>
     
@@ -59,9 +59,11 @@
 #define MAXTOKENS 64                // Well-behaved frontend will never send this many
 
 #define MAXORDERS 2000000000        // Not going all the way to MAX_INT, because various numbers might go above this
+#define MAXACCOUNTS 5000
                   
 #define TOO_MANY_ORDERS 1
 #define SILLY_VALUE 2
+#define TOO_HIGH_ACCOUNT 3
 
 
 typedef struct Fill_struct {
@@ -919,27 +921,30 @@ ORDER_AND_ERROR * parse_order (char * account_name, int account_int, int qty, in
     int id;
     ACCOUNT * accountobject;
     
+    id = next_id(0);
+    
     // The o_and_e structure lets us send either an order or an error to the caller...
     
     o_and_e = init_o_and_e();
     
-    // Check for too high an order ID...
+    // Check for too high an order ID, too high an account ID, or silly values...
     
-    id = next_id(0);
     if (id >= MAXORDERS)
     {
         o_and_e->error = TOO_MANY_ORDERS;
         return o_and_e;
-    }
     
-    // Check for silly values...
-    
-    if (price < 0 || qty < 1 || (direction != SELL && direction != BUY))
+    } else if (account_int >= MAXACCOUNTS)
+    {
+        o_and_e->error = TOO_HIGH_ACCOUNT;
+        return o_and_e;
+        
+    } else if (price < 0 || qty < 1 || (direction != SELL && direction != BUY))
     {
         o_and_e->error = SILLY_VALUE;
         return o_and_e;
     }
-    
+
     // The following call gets the account object. If not already extant, it is created.
     // If more memory is needed to store accounts up to this account_id, that happens...
     
