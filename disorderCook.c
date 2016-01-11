@@ -141,6 +141,7 @@ typedef struct DebugInfo_struct {
 
 char Venue[SMALLSTRING];
 char Symbol[SMALLSTRING];
+char * StartTime = NULL;
 
 LEVEL * FirstBidLevel = NULL;
 LEVEL * FirstAskLevel = NULL;
@@ -1251,6 +1252,8 @@ int main (int argc, char ** argv)
     safe_strcpy(Venue, argv[1], SMALLSTRING);
     safe_strcpy(Symbol, argv[2], SMALLSTRING);
     
+    StartTime = new_timestamp();
+    
     while (1)
     {
         eofcheck = fgets(input, MAXSTRING, stdin);
@@ -1431,18 +1434,20 @@ int main (int argc, char ** argv)
         if (strcmp("QUOTE", tokens[0]) == 0)
         {
             // Quotes are currently hideously inefficient, generated from scratch each time. Could FIXME.
-            
-            ts = new_timestamp();
 
             bidSize = get_size_from_level(FirstBidLevel);
             bidDepth = get_depth(FirstBidLevel);
             askSize = get_size_from_level(FirstAskLevel);
             askDepth = get_depth(FirstAskLevel);
             
+            ts = new_timestamp();
+            
             // Add all the fields that are always present...
             snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %d, "
                                          "\"askSize\": %d, \"bidDepth\": %d, \"askDepth\": %d, \"quoteTime\": \"%s\"",
                      Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
+
+            free(ts);
             
             if (FirstBidLevel)
             {
@@ -1468,7 +1473,6 @@ int main (int argc, char ** argv)
             
             printf("%s", buildup);
             
-            free(ts);
             end_message();
             continue;
         }
@@ -1548,6 +1552,11 @@ int main (int argc, char ** argv)
                            account->name, account->cents / 100, account->shares, account->posmin, account->posmax, (int) nav64 / 100);
                 }
             }
+            
+            ts = new_timestamp();
+            printf("\n  Start time: %s\nCurrent time: %s", StartTime, ts);
+            free(ts);
+            
             printf("</pre>");
             
             end_message();
