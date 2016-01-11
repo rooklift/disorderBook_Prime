@@ -11,7 +11,7 @@ This is a rewrite of my **[Stockfighter](http://stockfighter.io)** server **[dis
 
 ## Requirements
 
-The frontend still requires the Bottle library. If you need it, a copy is [in the other repo](https://github.com/fohristiwhirl/disorderBook/blob/master/bottle_0_12_9.py) (it's a single file, you can put it next to the other files here and it will be imported).
+The frontend still requires the Bottle library. If you need it, a copy is [in the other repo](https://github.com/fohristiwhirl/disorderBook/blob/master/bottle_0_12_9.py) (it's a single file, you can put it next to the other files here and it will be imported). Or just `pip install bottle`.
 
 ## Features
 
