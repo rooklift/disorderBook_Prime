@@ -28,6 +28,7 @@
     CANCEL <id>
     STATUS <id>
     STATUSALL <account_id>
+    
     __SCORES__
     __DEBUG_MEMORY__
     __ACC_FROM_ID__ <id>
@@ -35,8 +36,7 @@
     This last is not a direct response to a user query, but can be used by the
     frontend for authentication purposes (i.e. is the user entitled to cancel
     this order?)
-    
-    
+
     */
 
 #include <assert.h>
@@ -272,10 +272,8 @@ int next_id (int no_iterate_flag)
 }
 
 
-// Various safer strcpy functions exist. I thought of dumping
-// strlcpy() into the file but it's written in the confusing
-// do-4-things-at-once style. Instead, this function does the
-// same (minus the return value, which I have no need for here).
+// Various safer strcpy functions exist. I thought of dumping strlcpy() into the file but this
+// creature of my own devising does the same thing, minus the return value (which I don't need).
 
 void safe_strcpy (char * dest, char * source, size_t size)
 {
@@ -806,7 +804,6 @@ int fok_can_buy (int qty, int price)
             qty -= ordernode->order->qty;
             if (qty <= 0) return 1;
         }
-        
     }
     
     return 0;
@@ -827,7 +824,6 @@ int fok_can_sell (int qty, int price)
             qty -= ordernode->order->qty;
             if (qty <= 0) return 1;
         }
-        
     }
     
     return 0;
