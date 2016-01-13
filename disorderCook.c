@@ -1372,7 +1372,7 @@ void print_quote (void)
 }
 
 
-void print_scores(void)
+void print_scores (void)
 {
     ACCOUNT * account;
     int64_t nav64;
@@ -1440,7 +1440,7 @@ void print_scores(void)
 }
 
 
-void print_memory_info(void)
+void print_memory_info (void)
 {
     printf( "DebugInfo.inits_of_level: %d,\n"               // The compiler auto-concatenates these things
             "DebugInfo.inits_of_fill: %d,\n"                // (note the lack of commas)
