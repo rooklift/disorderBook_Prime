@@ -908,7 +908,7 @@ void add_order_to_account (ORDER * order, ACCOUNT * accountobject)
 }
 
 
-ORDER_AND_ERROR * parse_order (char * account_name, int account_int, int qty, int price, int direction, int orderType)
+ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, int price, int direction, int orderType)
 {
     // Note: account_name will be in the stack of the calling function, not in the heap
     
@@ -1216,6 +1216,255 @@ int get_depth (LEVEL * level)        // Returns size of this level and all worse
 }
 
 
+void print_orderbook (void)
+{
+    char * ts;
+    LEVEL * level;
+    int flag;
+    ORDERNODE * ordernode;
+    
+    ts = new_timestamp();
+    printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"%s\",\n", Venue, Symbol, ts);
+    free(ts);
+    
+    printf("\"asks\": [");
+    flag = 0;
+    for (level = FirstAskLevel; level != NULL; level = level->next)
+    {
+        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
+        {
+            if (flag) printf(", \n");
+            printf("{\"price\": %d, \"qty\": %d, \"isBuy\": false}", ordernode->order->price, ordernode->order->qty);
+            flag = 1;
+        }
+    }
+    printf("],\n");
+    
+    printf("\"bids\": [");
+    flag = 0;
+    for (level = FirstBidLevel; level != NULL; level = level->next)
+    {
+        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
+        {
+            if (flag) printf(", \n");
+            printf("{\"price\": %d, \"qty\": %d, \"isBuy\": true}", ordernode->order->price, ordernode->order->qty);
+            flag = 1;
+        }
+    }
+    printf("]}");
+    
+    return;
+}
+
+
+void print_all_orders_of_account (ACCOUNT * account)
+{
+    int flag;
+    int n;
+    
+    assert(account);
+    
+    printf("{\"ok\": true, \"venue\": \"%s\", \"orders\": [", Venue);
+    
+    flag = 0;
+    for (n = 0; n < account->count; n++)
+    {
+        if (flag) printf(", \n");
+        print_order(account->orders[n]);
+        flag = 1;
+    }
+    
+    printf("]}");
+    
+    return;
+}
+
+
+void cancel_order_by_id (int id)
+{
+    ORDERNODE * ordernode;
+    int price;
+    int dir;
+    LEVEL * level;
+    
+    assert(id >= 0 && id <= HighestKnownOrder);
+    
+    if (AllOrders[id]->orderType != LIMIT)          // Everything else is auto-cancelled after running
+    {
+        return;
+    }
+
+    price = AllOrders[id]->price;
+    dir = AllOrders[id]->direction;
+    
+    // Find the level then the ordernode, if possible...
+    
+    level = find_level(price, dir);
+    ordernode = find_ordernode(level, id);      // This is safe even if level == NULL
+    
+    // Now close the order and do the linked-list fiddling...
+    
+    if (ordernode)
+    {
+        ordernode->order->open = 0;
+        ordernode->order->qty = 0;
+        
+        cleanup_after_cancel(ordernode, level);   // Frees the node and even the level if needed; fixes links
+    }
+    
+    return;
+}
+
+
+void print_quote (void)
+{
+    // Quotes are currently hideously inefficient, generated from scratch each time. Could FIXME.
+
+    int bidSize;
+    int bidDepth;
+    int askSize;
+    int askDepth;
+    int bid;
+    int ask;
+    char * ts;
+    char buildup[MAXSTRING];
+    char part[MAXSTRING];
+    
+    bidSize = get_size_from_level(FirstBidLevel);
+    bidDepth = get_depth(FirstBidLevel);
+    askSize = get_size_from_level(FirstAskLevel);
+    askDepth = get_depth(FirstAskLevel);
+    
+    ts = new_timestamp();
+    
+    // Add all the fields that are always present...
+    snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %d, "
+                                 "\"askSize\": %d, \"bidDepth\": %d, \"askDepth\": %d, \"quoteTime\": \"%s\"",
+             Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
+
+    free(ts);
+    
+    if (FirstBidLevel)
+    {
+        bid = FirstBidLevel->price;
+        snprintf(part, MAXSTRING, ", \"bid\": %d", bid);
+        strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
+    }
+
+    if (FirstAskLevel)
+    {
+        ask = FirstAskLevel->price;
+        snprintf(part, MAXSTRING, ", \"ask\": %d", ask);
+        strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
+    }
+    
+    if (LastTradeTime)
+    {
+        snprintf(part, MAXSTRING, ", \"lastTrade\": \"%s\", \"lastSize\": %d, \"last\": %d", LastTradeTime, LastSize, LastPrice);
+        strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
+    }
+
+    strncat(buildup, "}", MAXSTRING - strlen(buildup) - 1);
+    
+    printf("%s", buildup);
+    
+    return;
+}
+
+
+void print_scores(void)
+{
+    ACCOUNT * account;
+    int64_t nav64;
+    char * ts;
+    int n;
+    
+    printf("<pre>%s %s\n", Venue, Symbol);
+
+    if (LastPrice == -1)
+    {
+        printf("No trading activity yet.</pre>");
+        return;
+    }
+    
+    printf("Current price: $%d.%02d\n\n", LastPrice / 100, LastPrice % 100);
+    
+    printf("             Account           USD $          Shares         Pos.min         Pos.max           NAV $\n");
+    
+    for (n = 0; n < CurrentAccountArrayLen; n++)
+    {
+        if (AllAccounts[n])
+        {
+            account = AllAccounts[n];
+            
+            // NAV will be printed as 32-bit, but we calculate it using 64 bits.
+            //
+            // We go through a huge amount of rigmarole to avoid overflows of the 64-bit number...
+            // The value of our position is guaranteed to fit inside a 64-bit int, but when we add
+            // our cash to it, it might overflow.
+            
+            nav64 = (int64_t) account->shares * (int64_t) LastPrice;    // Cash not counted yet
+            
+            if (nav64 > 0)
+            {
+                if (nav64 - 2147483647 > 2147483647)
+                {
+                    nav64 = 2147483647;         // NAV (sans cash) is huge enough, our cash is irrelevant
+                } else {
+                    nav64 += account->cents;    // NAV (sans cash) is small enough, we can add a 32-bit number to it
+                }
+            } else {
+                if (nav64 + 2147483647 < -2147483647)
+                {
+                    nav64 = -2147483647;
+                } else {
+                    nav64 += account->cents;
+                }
+            }
+            
+            if (nav64 > 2147483647) nav64 = 2147483647;
+            if (nav64 < -2147483647) nav64 = -2147483647;
+            
+            printf("%20s %15d %15d %15d %15d %15d\n",
+                   account->name, account->cents / 100, account->shares, account->posmin, account->posmax, (int) nav64 / 100);
+        }
+    }
+    
+    ts = new_timestamp();
+    printf("\n  Start time: %s\nCurrent time: %s", StartTime, ts);
+    free(ts);
+    
+    printf("</pre>");
+    
+    return;
+}
+
+
+void print_memory_info(void)
+{
+    printf( "DebugInfo.inits_of_level: %d,\n"               // The compiler auto-concatenates these things
+            "DebugInfo.inits_of_fill: %d,\n"                // (note the lack of commas)
+            "DebugInfo.inits_of_fillnode: %d,\n" 
+            "DebugInfo.inits_of_order: %d,\n"
+            "DebugInfo.inits_of_ordernode: %d,\n"
+            "DebugInfo.inits_of_account: %d,\n"
+            "DebugInfo.reallocs_of_global_order_list: %d,\n"
+            "DebugInfo.reallocs_of_global_account_list: %d,\n"
+            "DebugInfo.reallocs_of_account_order_list: %d",
+            DebugInfo.inits_of_level,
+            DebugInfo.inits_of_fill,
+            DebugInfo.inits_of_fillnode,
+            DebugInfo.inits_of_order,
+            DebugInfo.inits_of_ordernode,
+            DebugInfo.inits_of_account,
+            DebugInfo.reallocs_of_global_order_list,
+            DebugInfo.reallocs_of_global_account_list,
+            DebugInfo.reallocs_of_account_order_list
+            );
+    return;
+}
+
+
 int main (int argc, char ** argv)
 {
     char * eofcheck;
@@ -1223,30 +1472,9 @@ int main (int argc, char ** argv)
     char input[MAXSTRING];
     char tokens[MAXTOKENS][SMALLSTRING];
     int token_count;
-    
-    // The following are all general-purpose vars to be used wherever needed, they don't store long-term info
-    
-    int n;
-    int flag;
-    int price;
     int id;
-    int dir;
-    int orderType;
-    int bid;
-    int ask;
-    int bidSize;
-    int bidDepth;
-    int askSize;
-    int askDepth;
-    char buildup[MAXSTRING];
-    char part[MAXSTRING];
-    char * ts;
-    int64_t nav64;
+    int n;
     ORDER_AND_ERROR * o_and_e;
-    ORDERNODE * ordernode;
-    ORDER * order;
-    ACCOUNT * account;
-    LEVEL * level;
     
     assert(argc == 3);
     
@@ -1279,12 +1507,12 @@ int main (int argc, char ** argv)
             }
         }
         
-        // ---------------------------------------------- ORDER ----------------------------------------------------------
+        // Now handle whatever the request was.........
         
         if (strcmp("ORDER", tokens[0]) == 0)
         {
-            o_and_e = parse_order(tokens[1], atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]), atoi(tokens[6]));
-            //                    account    account_int      qty              price            direction        orderType
+            o_and_e = execute_order(tokens[1], atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]), atoi(tokens[6]));
+            //                      account    account_int      qty              price            direction        orderType
             
             if (o_and_e->error)
             {
@@ -1292,303 +1520,102 @@ int main (int argc, char ** argv)
             } else {
                 print_order(o_and_e->order);
             }
-            
             free(o_and_e);
+            
             end_message();
             continue;
         }
-        
-        // -------------------------------------- ORDER BOOK -------------------------------------------------------------
         
         if (strcmp("ORDERBOOK", tokens[0]) == 0)
         {
-            ts = new_timestamp();
-            printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"%s\",\n", Venue, Symbol, ts);
-            free(ts);
-            
-            printf("\"asks\": [");
-            flag = 0;
-            for (level = FirstAskLevel; level != NULL; level = level->next)
-            {
-                for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
-                {
-                    if (flag) printf(", \n");
-                    printf("{\"price\": %d, \"qty\": %d, \"isBuy\": false}", ordernode->order->price, ordernode->order->qty);
-                    flag = 1;
-                }
-            }
-            printf("],\n");
-            
-            printf("\"bids\": [");
-            flag = 0;
-            for (level = FirstBidLevel; level != NULL; level = level->next)
-            {
-                for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
-                {
-                    if (flag) printf(", \n");
-                    printf("{\"price\": %d, \"qty\": %d, \"isBuy\": true}", ordernode->order->price, ordernode->order->qty);
-                    flag = 1;
-                }
-            }
-            printf("]}");
-            
+            print_orderbook();
             end_message();
             continue;
         }
-        
-        // -------------------------------------- ORDER STATUS -----------------------------------------------------------
         
         if (strcmp("STATUS", tokens[0]) == 0)
         {
             id = atoi(tokens[1]);
+            
             if (id < 0 || id > HighestKnownOrder)
             {
                 printf("{\"ok\": false, \"error\": \"No such ID\"}");
-                end_message();
-                continue;
+            } else {
+                print_order(AllOrders[id]);
             }
-            
-            print_order(AllOrders[id]);
-            
+
             end_message();
             continue;
         }
-        
-        // --------------------------------- ALL ORDERS OF AN ACCOUNT ----------------------------------------------------
-        
-        // This can return a stupid amount of data. Frontend might want to not honour requests for this.
         
         if (strcmp("STATUSALL", tokens[0]) == 0)
         {
+            // This can return a stupid amount of data. Frontend might want to not honour requests for this.
+            
             id = atoi(tokens[1]);       // id is an account id in this case
-            if (id < 0 || id >= CurrentAccountArrayLen || AllAccounts[id] == NULL)
+
+            if (id < 0 || id >= CurrentAccountArrayLen || AllAccounts[id] == NULL)      // The order matters here (short-circuit)
             {
                 printf("{\"ok\": false, \"error\": \"Account not known on this book\"}");
-                end_message();
-                continue;
+            } else {
+                print_all_orders_of_account(AllAccounts[id]);
             }
-            
-            account = AllAccounts[id];
-            
-            printf("{\"ok\": true, \"venue\": \"%s\", \"orders\": [", Venue);
-            
-            flag = 0;
-            for (n = 0; n < account->count; n++)
-            {
-                if (flag) printf(", \n");
-                print_order(account->orders[n]);
-                flag = 1;
-            }
-            
-            printf("]}");
-            
+
             end_message();
             continue;
         }
-        
-        // ---------------------------------------- CANCEL ---------------------------------------------------------------
         
         if (strcmp("CANCEL", tokens[0]) == 0)
         {
             id = atoi(tokens[1]);
+            
             if (id < 0 || id > HighestKnownOrder)
             {
                 printf("{\"ok\": false, \"error\": \"No such ID\"}");
-                end_message();
-                continue;
-            }
-            
-            orderType = AllOrders[id]->orderType;
-            
-            if (orderType != LIMIT)                     // Everything else is auto-cancelled after running
-            {
+            } else {
+                cancel_order_by_id(id);
                 print_order(AllOrders[id]);
-                end_message();
-                continue;
-            }
-
-            price = AllOrders[id]->price;
-            dir = AllOrders[id]->direction;
-            
-            // Find the level then the ordernode, if possible...
-            
-            level = find_level(price, dir);
-            ordernode = find_ordernode(level, id);      // This is safe even if level == NULL
-            
-            // Now close the order and do the linked-list fiddling...
-            
-            if (ordernode)
-            {
-                ordernode->order->open = 0;
-                ordernode->order->qty = 0;
-                
-                cleanup_after_cancel(ordernode, level);   // Frees the node and even the level if needed; fixes links
             }
             
-            print_order(AllOrders[id]);
             end_message();
             continue;
         }
-        
-        // ----------------------------------------- QUOTE ---------------------------------------------------------------
         
         if (strcmp("QUOTE", tokens[0]) == 0)
         {
-            // Quotes are currently hideously inefficient, generated from scratch each time. Could FIXME.
-
-            bidSize = get_size_from_level(FirstBidLevel);
-            bidDepth = get_depth(FirstBidLevel);
-            askSize = get_size_from_level(FirstAskLevel);
-            askDepth = get_depth(FirstAskLevel);
-            
-            ts = new_timestamp();
-            
-            // Add all the fields that are always present...
-            snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %d, "
-                                         "\"askSize\": %d, \"bidDepth\": %d, \"askDepth\": %d, \"quoteTime\": \"%s\"",
-                     Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
-
-            free(ts);
-            
-            if (FirstBidLevel)
-            {
-                bid = FirstBidLevel->price;
-                snprintf(part, MAXSTRING, ", \"bid\": %d", bid);
-                strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
-            }
-
-            if (FirstAskLevel)
-            {
-                ask = FirstAskLevel->price;
-                snprintf(part, MAXSTRING, ", \"ask\": %d", ask);
-                strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
-            }
-            
-            if (LastTradeTime)
-            {
-                snprintf(part, MAXSTRING, ", \"lastTrade\": \"%s\", \"lastSize\": %d, \"last\": %d", LastTradeTime, LastSize, LastPrice);
-                strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
-            }
-
-            strncat(buildup, "}", MAXSTRING - strlen(buildup) - 1);
-            
-            printf("%s", buildup);
-            
+            print_quote();
             end_message();
             continue;
         }
-            
-        // ------------------------------ FRONT-END REQUEST FOR ACCOUNT OF ORDER -----------------------------------------
-        
+
         if (strcmp("__ACC_FROM_ID__", tokens[0]) == 0)
         {
             id = atoi(tokens[1]);
+            
             if (id < 0 || id > HighestKnownOrder)
             {
                 printf("ERROR None");
-                end_message();
-                continue;
+            } else {
+                printf("OK %s", AllOrders[id]->account->name);
             }
             
-            printf("OK %s", AllOrders[id]->account->name);
             end_message();
             continue;
         }
-        
-        // --------------------------------------- DEBUG REQUEST FOR MEMORY INFO -----------------------------------------
         
         if (strcmp("__DEBUG_MEMORY__", tokens[0]) == 0)
         {
-            printf( "DebugInfo.inits_of_level: %d,\n"                // The compiler auto-concatenates these things
-                    "DebugInfo.inits_of_fill: %d,\n"                 // (note the lack of commas)
-                    "DebugInfo.inits_of_fillnode: %d,\n" 
-                    "DebugInfo.inits_of_order: %d,\n"
-                    "DebugInfo.inits_of_ordernode: %d,\n"
-                    "DebugInfo.inits_of_account: %d,\n"
-                    "DebugInfo.reallocs_of_global_order_list: %d,\n"
-                    "DebugInfo.reallocs_of_global_account_list: %d,\n"
-                    "DebugInfo.reallocs_of_account_order_list: %d",
-                    DebugInfo.inits_of_level,
-                    DebugInfo.inits_of_fill,
-                    DebugInfo.inits_of_fillnode,
-                    DebugInfo.inits_of_order,
-                    DebugInfo.inits_of_ordernode,
-                    DebugInfo.inits_of_account,
-                    DebugInfo.reallocs_of_global_order_list,
-                    DebugInfo.reallocs_of_global_account_list,
-                    DebugInfo.reallocs_of_account_order_list
-                    );
+            print_memory_info();
             end_message();
             continue;
         }
-        
-        // ---------------------------------------- SCORES ---------------------------------------------------------------
         
         if (strcmp("__SCORES__", tokens[0]) == 0)
         {
-            printf("<pre>%s %s\n", Venue, Symbol);
-
-            if (LastPrice == -1)
-            {
-                printf("No trading activity yet.</pre>");
-                end_message();
-                continue;
-            }
-            
-            printf("Current price: $%d.%02d\n\n", LastPrice / 100, LastPrice % 100);
-            
-            printf("             Account           USD $          Shares         Pos.min         Pos.max           NAV $\n");
-            
-            for (n = 0; n < CurrentAccountArrayLen; n++)
-            {
-                if (AllAccounts[n])
-                {
-                    account = AllAccounts[n];
-                    
-                    // NAV will be printed as 32-bit, but we calculate it using 64 bits.
-                    //
-                    // We go through a huge amount of rigmarole to avoid overflows of the 64-bit number...
-                    // The value of our position is guaranteed to fit inside a 64-bit int, but when we add
-                    // our cash to it, it might overflow.
-                    
-                    nav64 = (int64_t) account->shares * (int64_t) LastPrice;    // Cash not counted yet
-                    
-                    if (nav64 > 0)
-                    {
-                        if (nav64 - 2147483647 > 2147483647)
-                        {
-                            nav64 = 2147483647;         // NAV (sans cash) is huge enough, our cash is irrelevant
-                        } else {
-                            nav64 += account->cents;    // NAV (sans cash) is small enough, we can add a 32-bit number to it
-                        }
-                    } else {
-                        if (nav64 + 2147483647 < -2147483647)
-                        {
-                            nav64 = -2147483647;
-                        } else {
-                            nav64 += account->cents;
-                        }
-                    }
-                    
-                    if (nav64 > 2147483647) nav64 = 2147483647;
-                    if (nav64 < -2147483647) nav64 = -2147483647;
-                    
-                    printf("%20s %15d %15d %15d %15d %15d\n",
-                           account->name, account->cents / 100, account->shares, account->posmin, account->posmax, (int) nav64 / 100);
-                }
-            }
-            
-            ts = new_timestamp();
-            printf("\n  Start time: %s\nCurrent time: %s", StartTime, ts);
-            free(ts);
-            
-            printf("</pre>");
-            
+            print_scores();
             end_message();
             continue;
         }
-
-        // ---------------------------------------------------------------------------------------------------------------
         
         printf("{\"ok\": false, \"error\": \"Did not comprehend\"}");
         end_message();
