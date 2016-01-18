@@ -15,4 +15,4 @@ The frontend still requires the Bottle library. If you need it, a copy is [in th
 
 ## Features
 
-Most things are the same as the pure Python server, [disorderBook](https://github.com/fohristiwhirl/disorderBook). Internally, I borrowed the level-based book design from [DanielVF's mutex](https://github.com/DanielVF/Mutex).
+Most things are the same as the pure Python server, [disorderBook](https://github.com/fohristiwhirl/disorderBook) but WebSockets are missing. Internally, I borrowed the level-based book design from [DanielVF's mutex](https://github.com/DanielVF/Mutex).
