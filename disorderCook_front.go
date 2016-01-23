@@ -9,6 +9,7 @@ import (
     "os/exec"
     "strconv"
     "strings"
+    "sync"
 )
 
 type pipes struct {
@@ -25,6 +26,12 @@ type order struct {
     Account     string       `json:"account"`
     Qty         int32        `json:"qty"`
     Price       int32        `json:"price"`
+}
+
+type req_channel struct {
+    Venue       string
+    Symbol      string
+    Command     string
 }
 
 const HEARTBEAT_OK = `{"ok": true, "error": ""}`
@@ -45,8 +52,10 @@ const IOC = 4
 
 // --------------------------------------------------------------------------------------------
 
-var books = make(map[string]map[string]pipes)
-var account_ints = make(map[string]int)
+var Books = make(map[string]map[string]pipes)
+var AccountInts = make(map[string]int)
+
+var C_Process_Lock sync.Mutex
 
 // --------------------------------------------------------------------------------------------
 
@@ -59,12 +68,12 @@ func createbook (venue string, symbol string) {
     
     // Should maybe handle errors from the above. Meh.
     
-    if books[venue] == nil {
+    if Books[venue] == nil {
         v := make(map[string]pipes)
-        books[venue] = v
+        Books[venue] = v
     }
     
-    books[venue][symbol] = pipes{i_pipe, o_pipe}
+    Books[venue][symbol] = pipes{i_pipe, o_pipe}
     command.Start()
 }
 
@@ -72,20 +81,22 @@ func getresponse (command string, venue string, symbol string) string {
     
     response := ""
     
-    v := books[venue]
+    v := Books[venue]
     if v == nil {
         return UNKNOWN_VENUE
     }
     
-    s := books[venue][symbol]
+    s := Books[venue][symbol]
     tmp := pipes{nil, nil}
     if s == tmp {
         return UNKNOWN_SYMBOL
     }
     
-    reader := bufio.NewReader(books[venue][symbol].stdout)
+    reader := bufio.NewReader(Books[venue][symbol].stdout)
     
-    fmt.Fprintf(books[venue][symbol].stdin, command)
+    C_Process_Lock.Lock()
+    
+    fmt.Fprintf(Books[venue][symbol].stdin, command)
     
     for {
         nextpiece, _, _ := reader.ReadLine()
@@ -95,6 +106,8 @@ func getresponse (command string, venue string, symbol string) string {
             break
         }
     }
+    
+    C_Process_Lock.Unlock()
     
     return response
 }
@@ -221,10 +234,10 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                     int_direction = BUY
             }
             
-            acc_id := account_ints[raw_order.Account]
+            acc_id := AccountInts[raw_order.Account]
             if acc_id == 0 {
-                acc_id = len(account_ints) + 1
-                account_ints[raw_order.Account] = acc_id
+                acc_id = len(AccountInts) + 1
+                AccountInts[raw_order.Account] = acc_id
             }
             
             command = fmt.Sprintf("ORDER %s %d %d %d %d %d\n", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
