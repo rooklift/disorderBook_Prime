@@ -10,8 +10,10 @@ tiny_libmaker.exe
 
 # The compiled binary:
 disorderCook.exe
+disorderCook_front.exe
 
 # Other files:
+disorderCook_8005.bat
 disorderCook_with_auth.bat
 disorderCook_with_excess.bat
 accounts.json
