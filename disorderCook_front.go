@@ -7,6 +7,7 @@ import (
     "io"
     "net/http"
     "os/exec"
+    "strconv"
     "strings"
 )
 
@@ -143,11 +144,11 @@ func handler(writer http.ResponseWriter, request * http.Request) {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" {
             venue := pathlist[3]
             symbol := pathlist[5]
-            order := pathlist[7]
+            id, _ := strconv.Atoi(pathlist[7])
             if request.Method == "DELETE" {
-                command = fmt.Sprintf("CANCEL %d\n", order)
+                command = fmt.Sprintf("CANCEL %d\n", id)
             } else {
-                command = fmt.Sprintf("STATUS %d\n", order)
+                command = fmt.Sprintf("STATUS %d\n", id)
             }
             res := getresponse(command, venue, symbol)
             fmt.Fprintf(writer, res)
