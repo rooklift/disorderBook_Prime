@@ -92,10 +92,9 @@ func getresponse (command string, venue string, symbol string) string {
         return UNKNOWN_SYMBOL
     }
     
-    reader := bufio.NewReader(Books[venue][symbol].stdout)
-    
     C_Process_Lock.Lock()
     
+    reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, command)
     
     for {
