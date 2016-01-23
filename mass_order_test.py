@@ -73,6 +73,21 @@ while 1:
         break
 
 print("{} quotes received in {} seconds".format(n, TEST_TIME))
+print("= {} per second\n".format(n // TEST_TIME))
+
+print("Getting many books...")
+starttime = time.clock()
+n = 0
+while 1:
+    n += 1
+    raw_response = get_response_from_process(proc, "ORDERBOOK")
+    # print(raw_response)
+    
+    # time.sleep(0.01)
+    if time.clock() - starttime > TEST_TIME:
+        break
+
+print("{} books received in {} seconds".format(n, TEST_TIME))
 print("= {} per second".format(n // TEST_TIME))
 
 input()
