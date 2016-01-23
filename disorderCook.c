@@ -1216,7 +1216,7 @@ int get_depth (LEVEL * level)        // Returns size of this level and all worse
 }
 
 
-void print_orderbook (void)
+void print_orderbook (void)     // This is really slow and needs help
 {
     char * ts;
     LEVEL * level;
