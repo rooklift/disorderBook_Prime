@@ -28,12 +28,6 @@ type order struct {
     Price       int32        `json:"price"`
 }
 
-type req_channel struct {
-    Venue       string
-    Symbol      string
-    Command     string
-}
-
 const HEARTBEAT_OK = `{"ok": true, "error": ""}`
 const UNKNOWN_PATH = `{"ok": false, "error": "Unknown path"}`
 const UNKNOWN_VENUE = `{"ok": false, "error": "Unknown venue"}`
