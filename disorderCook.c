@@ -149,17 +149,17 @@ LEVEL * FirstBidLevel = NULL;
 LEVEL * FirstAskLevel = NULL;
 
 char * LastTradeTime = NULL;
-int LastPrice = -1;             // Don't change this now, is checked by score function
+int LastPrice = -1;                 // Don't change this now, is checked by score function
 int LastSize = -1;
 
 ORDER ** AllOrders = NULL;
 int CurrentOrderArrayLen = 0;
 int HighestKnownOrder = -1;
 
-ACCOUNT ** AllAccounts = NULL;
-int CurrentAccountArrayLen = 0;
+ACCOUNT ** AllAccounts = NULL;      // The array of all accounts gets realloc'd as needed,
+int CurrentAccountArrayLen = 0;     // but it should probably simply have a fixed size.
 
-DEBUG_INFO DebugInfo = {0};     // Think global is auto-zeroed anyway, but whatever
+DEBUG_INFO DebugInfo = {0};         // Think global is auto-zeroed anyway, but whatever
 
 
 // ------------------------------------------------------------------------------------------
