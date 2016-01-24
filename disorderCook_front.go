@@ -86,18 +86,15 @@ const FRONTPAGE = `<html>
 
 // --------------------------------------------------------------------------------------------
 
-var Books = make(map[string]map[string]PipesStruct)
+var Books = make(map[string]map[string]*PipesStruct)
+var Locks = make(map[string]map[string]*sync.Mutex)
 var AccountInts = make(map[string]int)
 var Auth = make(map[string]string)
 
 var AuthMode = false
 var BookCount = 0
 
-var C_Process_Lock sync.Mutex
-
 var Options OptionsStruct
-
-var NullPipesStruct PipesStruct     // for comparison purposes
 
 // --------------------------------------------------------------------------------------------
 
@@ -109,11 +106,13 @@ func create_book_if_needed (venue string, symbol string) error {
             return errors.New("Too many books!")
         }
         
-        v := make(map[string]PipesStruct)
+        v := make(map[string]*PipesStruct)
+        l := make(map[string]*sync.Mutex)
         Books[venue] = v
+        Locks[venue] = l
     }
     
-    if Books[venue][symbol] == NullPipesStruct {
+    if Books[venue][symbol] == nil {
         
         if BookCount >= Options.MaxBooks {
             return errors.New("Too many books!")
@@ -125,7 +124,11 @@ func create_book_if_needed (venue string, symbol string) error {
         
         // Should maybe handle errors from the above. FIXME
         
-        Books[venue][symbol] = PipesStruct{i_pipe, o_pipe}
+        newpipesstruct := PipesStruct{i_pipe, o_pipe}
+        newlock := sync.Mutex{}
+        
+        Books[venue][symbol] = &newpipesstruct
+        Locks[venue][symbol] = &newlock
         BookCount++
         command.Start()
     }
@@ -142,11 +145,12 @@ func getresponse (command string, venue string, symbol string) string {
     }
     
     s := Books[venue][symbol]
-    if s == NullPipesStruct {
+    if s == nil {
         return UNKNOWN_SYMBOL
     }
     
-    C_Process_Lock.Lock()
+    mutex := Locks[venue][symbol]
+    mutex.Lock()
     
     reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, command)
@@ -161,7 +165,7 @@ func getresponse (command string, venue string, symbol string) string {
         }
     }
     
-    C_Process_Lock.Unlock()
+    mutex.Unlock()
     
     return response
 }
