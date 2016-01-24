@@ -1379,7 +1379,7 @@ void print_scores (void)
     char * ts;
     int n;
     
-    printf("<pre>%s %s\n", Venue, Symbol);
+    printf("<html><head><title>disorderBook Scores</title></head><body><pre>%s %s\n", Venue, Symbol);
 
     if (LastPrice == -1)
     {
@@ -1434,7 +1434,7 @@ void print_scores (void)
     printf("\n  Start time: %s\nCurrent time: %s", StartTime, ts);
     free(ts);
     
-    printf("</pre>");
+    printf("</pre></body></html>");
     
     return;
 }
