@@ -134,8 +134,9 @@ func getresponse (command string, venue string, symbol string) string {
     
     for {
         nextpiece, _, _ := reader.ReadLine()
-        if string(nextpiece) != "END" {
-            response += string(nextpiece) + "\n"
+        str_piece := strings.Trim(string(nextpiece), "\n\r")
+        if str_piece != "END" {
+            response += str_piece + "\n"
         } else {
             break
         }
@@ -523,7 +524,7 @@ func main() {
     create_book_if_needed(Options.DefaultVenue, Options.DefaultSymbol)
     
     fmt.Printf("disorderBook (C+Go version) starting up on port %d\n", Options.Port)
-    portstring := fmt.Sprintf(":%d", Options.Port)
+    serverstring := fmt.Sprintf("127.0.0.1:%d", Options.Port)
     
     if Options.AccountFilename != "" {
         load_auth()
@@ -531,5 +532,5 @@ func main() {
     }
     
     http.HandleFunc("/", handler)
-    http.ListenAndServe(portstring, nil)
+    http.ListenAndServe(serverstring, nil)
 }
