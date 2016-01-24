@@ -630,7 +630,7 @@ def main():
     if opts.accounts_file:
         create_auth_records()
     
-    print("disorderCook starting up...\n")
+    print("disorderBook (C+Python version) starting up on port {}\n".format(opts.port))
     if not auth:
         print(" -----> Warning: running WITHOUT AUTHENTICATION! <-----\n")
     

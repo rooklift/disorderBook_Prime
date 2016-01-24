@@ -1,11 +1,11 @@
 # disorderCook
 
-This is a rewrite of my **[Stockfighter](http://stockfighter.io)** server **[disorderBook](https://github.com/fohristiwhirl/disorderBook)**, using C for the backend. The frontend is still in Python.
+This is a rewrite of my **[Stockfighter](http://stockfighter.io)** server **[disorderBook](https://github.com/fohristiwhirl/disorderBook)**, using C for the backend. For the frontend, there is a choice of Python or Go implementations.
 
 ## Usage
 
 * Compile `disorderCook.c` and name the executable `disorderCook.exe`
-* Run `python3 disorderCook_front.py`
+* Run either of the frontends `disorderCook_front` (Python or Go versions)
 * Connect your trading bots to &nbsp; **http://127.0.0.1:8000/ob/api/** &nbsp; instead of the normal URL
 * Don't use https
 
