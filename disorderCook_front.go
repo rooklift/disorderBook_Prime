@@ -87,12 +87,13 @@ const FRONTPAGE = `<html>
 // --------------------------------------------------------------------------------------------
 
 var Books = make(map[string]map[string]PipesStruct)
-var Locks = make(map[string]map[string]sync.Mutex)
 var AccountInts = make(map[string]int)
 var Auth = make(map[string]string)
 
 var AuthMode = false
 var BookCount = 0
+
+var C_Process_Lock sync.Mutex
 
 var Options OptionsStruct
 
@@ -109,9 +110,7 @@ func create_book_if_needed (venue string, symbol string) error {
         }
         
         v := make(map[string]PipesStruct)
-        l := make(map[string]sync.Mutex)
         Books[venue] = v
-        Locks[venue] = l
     }
     
     if Books[venue][symbol] == NullPipesStruct {
@@ -127,7 +126,6 @@ func create_book_if_needed (venue string, symbol string) error {
         // Should maybe handle errors from the above. FIXME
         
         Books[venue][symbol] = PipesStruct{i_pipe, o_pipe}
-        Locks[venue][symbol] = sync.Mutex{}
         BookCount++
         command.Start()
     }
@@ -148,8 +146,7 @@ func getresponse (command string, venue string, symbol string) string {
         return UNKNOWN_SYMBOL
     }
     
-    mutex := Locks[venue][symbol]
-    mutex.Lock()
+    C_Process_Lock.Lock()
     
     reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, command)
@@ -164,7 +161,7 @@ func getresponse (command string, venue string, symbol string) string {
         }
     }
     
-    mutex.Unlock()
+    C_Process_Lock.Unlock()
     
     return response
 }
