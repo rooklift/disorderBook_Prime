@@ -106,10 +106,8 @@ func create_book_if_needed (venue string, symbol string) error {
             return errors.New("Too many books!")
         }
         
-        v := make(map[string]*PipesStruct)
-        l := make(map[string]*sync.Mutex)
-        Books[venue] = v
-        Locks[venue] = l
+        Books[venue] = make(map[string]*PipesStruct)
+        Locks[venue] = make(map[string]*sync.Mutex)
     }
     
     if Books[venue][symbol] == nil {
@@ -124,11 +122,10 @@ func create_book_if_needed (venue string, symbol string) error {
         
         // Should maybe handle errors from the above. FIXME
         
-        newpipesstruct := PipesStruct{i_pipe, o_pipe}
-        newlock := sync.Mutex{}
+        new_pipes_struct := PipesStruct{i_pipe, o_pipe}
         
-        Books[venue][symbol] = &newpipesstruct
-        Locks[venue][symbol] = &newlock
+        Books[venue][symbol] = &new_pipes_struct
+        Locks[venue][symbol] = new(sync.Mutex)
         BookCount++
         command.Start()
     }
@@ -149,8 +146,7 @@ func getresponse (command string, venue string, symbol string) string {
         return UNKNOWN_SYMBOL
     }
     
-    mutex := Locks[venue][symbol]
-    mutex.Lock()
+    Locks[venue][symbol].Lock()
     
     reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, command)
@@ -165,7 +161,7 @@ func getresponse (command string, venue string, symbol string) string {
         }
     }
     
-    mutex.Unlock()
+    Locks[venue][symbol].Unlock()
     
     return response
 }
