@@ -307,8 +307,9 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
             
-            if AuthMode {           // Do this before the acc_id int is generated
-                if Auth[account] != request_api_key || Auth[account] == "" {
+            if AuthMode {       // Do this before the acc_id int is generated
+                api_key, ok := Auth[account]
+                if api_key != request_api_key || ok == false {
                     fmt.Fprintf(writer, AUTH_FAILURE)
                     return
                 }
@@ -433,7 +434,8 @@ func handler(writer http.ResponseWriter, request * http.Request) {
             }
             
             if AuthMode {       // Do this before the acc_id int is generated
-                if Auth[raw_order.Account] != request_api_key || Auth[raw_order.Account] == "" {
+                api_key, ok := Auth[raw_order.Account]
+                if api_key != request_api_key || ok == false {
                     fmt.Fprintf(writer, AUTH_FAILURE)
                     return
                 }
