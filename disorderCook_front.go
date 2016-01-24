@@ -150,6 +150,8 @@ func handler(writer http.ResponseWriter, request * http.Request) {
     
     var command string
     
+    writer.Header().Set("Content-Type", "application/json")
+    
     request_api_key := request.Header.Get("X-Starfighter-Authorization")
     if request_api_key == "" {
         request_api_key = request.Header.Get("X-Stockfighter-Authorization")
@@ -451,6 +453,20 @@ func handler(writer http.ResponseWriter, request * http.Request) {
             
             command = fmt.Sprintf("ORDER %s %d %d %d %d %d\n", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
             res := getresponse(command, venue, symbol)
+            fmt.Fprintf(writer, res)
+            return
+        }
+    }
+    
+    // Scores...
+    
+    if len(pathlist) == 7 {
+        if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "scores" {
+            venue := pathlist[3]
+            symbol := pathlist[5]
+            
+            res := getresponse("__SCORES__\n", venue, symbol)
+            writer.Header().Set("Content-Type", "text/html")
             fmt.Fprintf(writer, res)
             return
         }
