@@ -550,7 +550,9 @@ def home():
     return """
     <pre>
     
-    disorderCook: unofficial Stockfighter server
+    disorderBook: unofficial Stockfighter server
+    
+    C+Python version
     https://github.com/fohristiwhirl/disorderCook
     
     By Amtiskaw (Fohristiwhirl on GitHub)
