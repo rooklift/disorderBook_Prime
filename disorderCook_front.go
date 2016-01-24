@@ -65,6 +65,25 @@ const MARKET = 2
 const FOK = 3
 const IOC = 4
 
+const FRONTPAGE = `<html>
+    <head><title>disorderBook</title></head>
+    <body><pre>
+
+    disorderBook: unofficial Stockfighter server
+    
+    C+Go version
+    https://github.com/fohristiwhirl/disorderCook
+    
+    By Amtiskaw (Fohristiwhirl on GitHub)
+    With help from cite-reader, Medecau and DanielVF
+    
+    Mad props to patio11 for the elegant fundamental design!
+    Also inspired by eu90h's Mockfighter
+    
+    
+    "WOAH THATS FAST" -- DanielVF
+    </pre></body></html>`
+
 // --------------------------------------------------------------------------------------------
 
 var Books = make(map[string]map[string]PipesStruct)
@@ -164,28 +183,8 @@ func handler(writer http.ResponseWriter, request * http.Request) {
     // Welcome message for "/"
     
     if len(pathlist) == 1 && pathlist[0] == "" {      // The split behaviour means len is never 0
-    
-        s := `<html><head><title>disorderBook</title></head>
-        <body>
-        <pre>
-    
-        disorderBook: unofficial Stockfighter server
-        
-        C+Go version
-        https://github.com/fohristiwhirl/disorderCook
-        
-        By Amtiskaw (Fohristiwhirl on GitHub)
-        With help from cite-reader, Medecau and DanielVF
-        
-        Mad props to patio11 for the elegant fundamental design!
-        Also inspired by eu90h's Mockfighter
-        
-        
-        "WOAH THATS FAST" -- DanielVF
-        </pre></body></html>`
-        
         writer.Header().Set("Content-Type", "text/html")
-        fmt.Fprintf(writer, s)
+        fmt.Fprintf(writer, FRONTPAGE)
         return
     }
     
