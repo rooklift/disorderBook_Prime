@@ -134,8 +134,6 @@ func create_book_if_needed (venue string, symbol string) error {
 
 func getresponse (command string, venue string, symbol string) string {
     
-    response := ""
-    
     v := Books[venue]
     if v == nil {
         return UNKNOWN_VENUE
@@ -146,11 +144,16 @@ func getresponse (command string, venue string, symbol string) string {
         return UNKNOWN_SYMBOL
     }
     
+    if len(command) == 0 || command[len(command) - 1] != '\n' {
+        command = command + "\n"
+    }
+    
     Locks[venue][symbol].Lock()
     
     reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, command)
     
+    response := ""
     for {
         nextpiece, _, _ := reader.ReadLine()
         str_piece := strings.Trim(string(nextpiece), "\n\r")
@@ -167,8 +170,6 @@ func getresponse (command string, venue string, symbol string) string {
 }
 
 func handler(writer http.ResponseWriter, request * http.Request) {
-    
-    var command string
     
     writer.Header().Set("Content-Type", "application/json")
     
@@ -288,7 +289,7 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
             
-            res := getresponse("QUOTE\n", venue, symbol)
+            res := getresponse("QUOTE", venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -307,7 +308,7 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
             
-            res := getresponse("ORDERBOOK\n", venue, symbol)
+            res := getresponse("ORDERBOOK", venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -349,7 +350,7 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 AccountInts[account] = acc_id
             }
             
-            res := getresponse("STATUSALL " + strconv.Itoa(acc_id) + "\n" , venue, symbol)
+            res := getresponse("STATUSALL " + strconv.Itoa(acc_id), venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -368,7 +369,7 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
             
-            res1 := getresponse("__ACC_FROM_ID__ " + strconv.Itoa(id) + "\n", venue, symbol)
+            res1 := getresponse("__ACC_FROM_ID__ " + strconv.Itoa(id), venue, symbol)
             res1 = strings.Trim(res1, " \t\n\r")
             reply_list := strings.Split(res1, " ")
             err_string, account := reply_list[0], reply_list[1]
@@ -385,10 +386,12 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 }
             }
             
+            var command string
             if request.Method == "DELETE" {
-                command = fmt.Sprintf("CANCEL %d\n", id)
+                
+                command = fmt.Sprintf("CANCEL %d", id)
             } else {
-                command = fmt.Sprintf("STATUS %d\n", id)
+                command = fmt.Sprintf("STATUS %d", id)
             }
             res2 := getresponse(command, venue, symbol)
             fmt.Fprintf(writer, res2)
@@ -481,7 +484,7 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
             
-            command = fmt.Sprintf("ORDER %s %d %d %d %d %d\n", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
+            command := fmt.Sprintf("ORDER %s %d %d %d %d %d", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
             res := getresponse(command, venue, symbol)
             fmt.Fprintf(writer, res)
             return
@@ -495,7 +498,7 @@ func handler(writer http.ResponseWriter, request * http.Request) {
             venue := pathlist[3]
             symbol := pathlist[5]
             
-            res := getresponse("__SCORES__\n", venue, symbol)
+            res := getresponse("__SCORES__", venue, symbol)
             writer.Header().Set("Content-Type", "text/html")
             fmt.Fprintf(writer, res)
             return
