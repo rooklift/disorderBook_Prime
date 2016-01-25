@@ -70,17 +70,17 @@ const FRONTPAGE = `<html>
     <body><pre>
 
     disorderBook: unofficial Stockfighter server
-    
+
     C+Go version
     https://github.com/fohristiwhirl/disorderCook
-    
+
     By Amtiskaw (Fohristiwhirl on GitHub)
     With help from cite-reader, Medecau and DanielVF
-    
+
     Mad props to patio11 for the elegant fundamental design!
     Also inspired by eu90h's Mockfighter
-    
-    
+
+
     "WOAH THATS FAST" -- DanielVF
     </pre></body></html>`
 
@@ -99,31 +99,31 @@ var Options OptionsStruct
 // --------------------------------------------------------------------------------------------
 
 func create_book_if_needed (venue string, symbol string) error {
-    
+
     if Books[venue] == nil {
-        
+
         if BookCount >= Options.MaxBooks {
             return errors.New("Too many books!")
         }
-        
+
         Books[venue] = make(map[string]*PipesStruct)
         Locks[venue] = make(map[string]*sync.Mutex)
     }
-    
+
     if Books[venue][symbol] == nil {
-        
+
         if BookCount >= Options.MaxBooks {
             return errors.New("Too many books!")
         }
-        
+
         command := exec.Command("./disorderCook.exe", venue, symbol)
         i_pipe, _ := command.StdinPipe()
         o_pipe, _ := command.StdoutPipe()
-        
+
         // Should maybe handle errors from the above. FIXME
-        
+
         new_pipes_struct := PipesStruct{i_pipe, o_pipe}
-        
+
         Books[venue][symbol] = &new_pipes_struct
         Locks[venue][symbol] = new(sync.Mutex)
         BookCount++
@@ -133,26 +133,26 @@ func create_book_if_needed (venue string, symbol string) error {
 }
 
 func getresponse (command string, venue string, symbol string) string {
-    
+
     v := Books[venue]
     if v == nil {
         return UNKNOWN_VENUE
     }
-    
+
     s := Books[venue][symbol]
     if s == nil {
         return UNKNOWN_SYMBOL
     }
-    
+
     if len(command) == 0 || command[len(command) - 1] != '\n' {
         command = command + "\n"
     }
-    
+
     Locks[venue][symbol].Lock()
-    
+
     reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, command)
-    
+
     response := ""
     for {
         nextpiece, _, _ := reader.ReadLine()
@@ -163,16 +163,16 @@ func getresponse (command string, venue string, symbol string) string {
             break
         }
     }
-    
+
     Locks[venue][symbol].Unlock()
-    
+
     return response
 }
 
 func handler(writer http.ResponseWriter, request * http.Request) {
-    
+
     writer.Header().Set("Content-Type", "application/json")
-    
+
     request_api_key := request.Header.Get("X-Starfighter-Authorization")
     if request_api_key == "" {
         request_api_key = request.Header.Get("X-Stockfighter-Authorization")
@@ -180,33 +180,33 @@ func handler(writer http.ResponseWriter, request * http.Request) {
 
     path_clean := strings.Trim(request.URL.Path, "\n\r\t /")
     pathlist := strings.Split(path_clean, "/")
-    
+
     // Welcome message for "/"
-    
+
     if len(pathlist) == 1 && pathlist[0] == "" {      // The split behaviour means len is never 0
         writer.Header().Set("Content-Type", "text/html")
         fmt.Fprintf(writer, FRONTPAGE)
         return
     }
-    
+
     // Check for obvious path fails...
-    
+
     if len(pathlist) < 2 || pathlist[0] != "ob" || pathlist[1] != "api" {
         fmt.Fprintf(writer, UNKNOWN_PATH)
         return
     }
-    
+
     // General heartbeat...
-    
+
     if len(pathlist) == 3 {
         if pathlist[2] == "heartbeat" {
             fmt.Fprintf(writer, HEARTBEAT_OK)
             return
         }
     }
-    
+
     // Venues list...
-    
+
     if len(pathlist) == 3 {
         if pathlist[2] == "venues" {
             fmt.Fprintf(writer, `{"ok": true, "venues": [`)
@@ -224,9 +224,9 @@ func handler(writer http.ResponseWriter, request * http.Request) {
             return
         }
     }
-    
+
     // Venue heartbeat...
-    
+
     if len(pathlist) == 5 {
         if pathlist[2] == "venues" && pathlist[4] == "heartbeat" {
             venue := pathlist[3]
@@ -238,11 +238,11 @@ func handler(writer http.ResponseWriter, request * http.Request) {
             return
         }
     }
-    
+
     // Stocks on an exchange...
-    
+
     list_stocks_flag := false
-    
+
     if len(pathlist) == 4 {
         if pathlist[2] == "venues" {
             list_stocks_flag = true
@@ -252,15 +252,15 @@ func handler(writer http.ResponseWriter, request * http.Request) {
             list_stocks_flag = true
         }
     }
-    
+
     if list_stocks_flag {
         venue := pathlist[3]
-        
+
         if Books[venue] == nil {
             fmt.Fprintf(writer, NO_VENUE_HEART)
             return
         }
-        
+
         fmt.Fprintf(writer, `{"ok": true, "symbols": [`)
         name := ""
         flag := false
@@ -275,67 +275,67 @@ func handler(writer http.ResponseWriter, request * http.Request) {
         fmt.Fprintf(writer, "]}")
         return
     }
-    
+
     // Quote...
-    
+
     if len(pathlist) == 7 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "quote" {
             venue := pathlist[3]
             symbol := pathlist[5]
-            
+
             err := create_book_if_needed(venue, symbol)
             if err != nil {
                 fmt.Fprintf(writer, TOO_MANY_BOOKS)
                 return
             }
-            
+
             res := getresponse("QUOTE", venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
     }
-    
+
     // Orderbook...
-    
+
     if len(pathlist) == 6 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" {
             venue := pathlist[3]
             symbol := pathlist[5]
-            
+
             err := create_book_if_needed(venue, symbol)
             if err != nil {
                 fmt.Fprintf(writer, TOO_MANY_BOOKS)
                 return
             }
-            
+
             res := getresponse("ORDERBOOK", venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
     }
-    
+
     // All orders on a venue...
-    
+
     if len(pathlist) == 7 {
         if pathlist[2] == "venues" && pathlist[4] == "accounts" && pathlist[6] == "orders" {
             fmt.Fprintf(writer, NOT_IMPLEMENTED)
             return
         }
     }
-    
+
     // All orders on a venue (specific stock)...
-    
+
     if len(pathlist) == 9 {
         if pathlist[2] == "venues" && pathlist[4] == "accounts" && pathlist[6] == "stocks" && pathlist[8] == "orders" {
             venue := pathlist[3]
             account := pathlist[5]
             symbol := pathlist[7]
-            
+
             if Options.Excess == false {
                 fmt.Fprintf(writer, DISABLED)
                 return
             }
-            
+
             if AuthMode {       // Do this before the acc_id int is generated
                 api_key, ok := Auth[account]
                 if api_key != request_api_key || ok == false {
@@ -343,32 +343,32 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                     return
                 }
             }
-            
+
             acc_id := AccountInts[account]
             if acc_id == 0 {
                 acc_id = len(AccountInts) + 1
                 AccountInts[account] = acc_id
             }
-            
+
             res := getresponse("STATUSALL " + strconv.Itoa(acc_id), venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
     }
-    
+
     // Status and cancel...
-    
+
     if len(pathlist) == 8 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" {
             venue := pathlist[3]
             symbol := pathlist[5]
-            
+
             id, err := strconv.Atoi(pathlist[7])
             if err != nil {
                 fmt.Fprintf(writer, BAD_ORDER)
                 return
             }
-            
+
             res1 := getresponse("__ACC_FROM_ID__ " + strconv.Itoa(id), venue, symbol)
             res1 = strings.Trim(res1, " \t\n\r")
             reply_list := strings.Split(res1, " ")
@@ -378,17 +378,17 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 fmt.Fprintf(writer, UNKNOWN_ORDER)
                 return
             }
-            
+
             if AuthMode {
                 if Auth[account] != request_api_key || Auth[account] == "" {
                     fmt.Fprintf(writer, AUTH_FAILURE)
                     return
                 }
             }
-            
+
             var command string
             if request.Method == "DELETE" {
-                
+
                 command = fmt.Sprintf("CANCEL %d", id)
             } else {
                 command = fmt.Sprintf("STATUS %d", id)
@@ -398,18 +398,18 @@ func handler(writer http.ResponseWriter, request * http.Request) {
             return
         }
     }
-    
+
     // Order placing...
-    
+
     if len(pathlist) == 7 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" && request.Method == "POST" {
             venue := pathlist[3]
             symbol := pathlist[5]
-            
+
             raw_order := OrderStruct{}
             decoder := json.NewDecoder(request.Body)
             err := decoder.Decode(&raw_order)
-            
+
             if err != nil {
                 fmt.Fprintf(writer, BAD_JSON)
                 return
@@ -422,24 +422,25 @@ func handler(writer http.ResponseWriter, request * http.Request) {
             if raw_order.Symbol == "" && raw_order.Stock == "" {
                 raw_order.Symbol = symbol
             }
-            
+
             // Accept stock as an alias of symbol...
             if raw_order.Stock != "" {
                 raw_order.Symbol = raw_order.Stock
             }
-            
+
             if raw_order.Venue != venue || raw_order.Symbol != symbol {
                 fmt.Fprintf(writer, URL_MISMATCH)
                 return
             }
-            
-            if raw_order.Venue == "" || raw_order.Symbol == "" || raw_order.Account == "" || raw_order.Qty == 0 || raw_order.Direction == "" || raw_order.OrderType == "" {
+
+            if raw_order.Venue == "" || raw_order.Symbol == "" || raw_order.Account == "" || raw_order.Qty == 0 ||
+                    raw_order.Direction == "" || raw_order.OrderType == "" {
                 fmt.Fprintf(writer, MISSING_FIELD)
                 return
             }
-            
+
             // FIXME add length checks
-            
+
             int_ordertype := 0
             switch raw_order.OrderType {
                 case "ioc":
@@ -455,7 +456,7 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 case "market":
                     int_ordertype = MARKET
             }
-            
+
             int_direction := 0
             switch raw_order.Direction {
                 case "sell":
@@ -463,7 +464,7 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 case "buy":
                     int_direction = BUY
             }
-            
+
             if AuthMode {       // Do this before the acc_id int is generated
                 api_key, ok := Auth[raw_order.Account]
                 if api_key != request_api_key || ok == false {
@@ -471,40 +472,40 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                     return
                 }
             }
-            
+
             acc_id := AccountInts[raw_order.Account]
             if acc_id == 0 {
                 acc_id = len(AccountInts) + 1
                 AccountInts[raw_order.Account] = acc_id
             }
-            
+
             err = create_book_if_needed(venue, symbol)
             if err != nil {
                 fmt.Fprintf(writer, TOO_MANY_BOOKS)
                 return
             }
-            
+
             command := fmt.Sprintf("ORDER %s %d %d %d %d %d", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
             res := getresponse(command, venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
     }
-    
+
     // Scores...
-    
+
     if len(pathlist) == 7 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "scores" {
             venue := pathlist[3]
             symbol := pathlist[5]
-            
+
             res := getresponse("__SCORES__", venue, symbol)
             writer.Header().Set("Content-Type", "text/html")
             fmt.Fprintf(writer, res)
             return
         }
     }
-    
+
     fmt.Fprintf(writer, UNKNOWN_PATH)
     return
 }
@@ -540,9 +541,9 @@ func main() {
     defaultvenuePtr     := flag.String("venue", "TESTEX", "Default venue")
     defaultsymbolPtr    := flag.String("symbol", "FOOBAR", "Default symbol")
     excessPtr           := flag.Bool("excess", false, "Enable commands that can return excessive responses")
-    
+
     flag.Parse()
-    
+
     Options = OptionsStruct{    MaxBooks : *maxbooksPtr,
                                     Port : *portPtr,
                                   WsPort : *wsportPtr,
@@ -550,17 +551,17 @@ func main() {
                             DefaultVenue : *defaultvenuePtr,
                            DefaultSymbol : *defaultsymbolPtr,
                                   Excess : *excessPtr}
-    
+
     create_book_if_needed(Options.DefaultVenue, Options.DefaultSymbol)
-    
+
     fmt.Printf("disorderBook (C+Go version) starting up on port %d\n", Options.Port)
     serverstring := fmt.Sprintf("127.0.0.1:%d", Options.Port)
-    
+
     if Options.AccountFilename != "" {
         load_auth()
         AuthMode = true
     }
-    
+
     http.HandleFunc("/", handler)
     http.ListenAndServe(serverstring, nil)
 }

@@ -1,38 +1,38 @@
 /*  Crazy attempt to write the disorderBook backend in C.
     The data layout stolen from DanielVF.
-   
+
     We store all data in memory so that the user can retrieve it later.
     As such, there are very few free() calls.
 
 
     PROTOCOL:
-    
+
     We don't handle user input directly. The frontend is responsible for
     sending us commands as single lines. Only the ORDER command is tricky:
-    
+
     ORDER <account> <account_id> <qty> <price> <dir:1|2> <orderType:1|2|3|4>
-    
+
     e.g.
-    
+
     ORDER CES134127  5            100   5000    1         3
-    
+
     The frontend must give each account a unique, low, non-negative integer as
     an id (RAM is allocated based on these, so keep them as low as possible).
-    
+
     Numbers for direction and orderType are defined below.
-    
+
     Other commands:
-    
+
     QUOTE
     ORDERBOOK
     CANCEL <id>
     STATUS <id>
     STATUSALL <account_id>
-    
+
     __SCORES__
     __DEBUG_MEMORY__
     __ACC_FROM_ID__ <id>
-    
+
     This last is not a direct response to a user query, but can be used by the
     frontend for authentication purposes (i.e. is the user entitled to cancel
     this order?)
@@ -60,7 +60,7 @@
 
 #define MAXORDERS 2000000000        // Not going all the way to MAX_INT, because various numbers might go above this
 #define MAXACCOUNTS 5000
-                  
+
 #define TOO_MANY_ORDERS 1
 #define SILLY_VALUE 2
 #define TOO_HIGH_ACCOUNT 3
@@ -130,12 +130,12 @@ typedef struct DebugInfo_struct {
     int inits_of_order;
     int inits_of_ordernode;
     int inits_of_account;
-    
+
     int reallocs_of_global_order_list;
     int reallocs_of_global_account_list;
     int reallocs_of_account_order_list;
 } DEBUG_INFO;
-    
+
 
 
 // ---------------------------------- GLOBALS -----------------------------------------------
@@ -188,17 +188,17 @@ void check_ptr_or_quit (void * ptr)
 LEVEL * init_level (int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next)
 {
     LEVEL * ret;
-    
+
     DebugInfo.inits_of_level++;
-    
+
     ret = malloc(sizeof(LEVEL));
     check_ptr_or_quit(ret);
-    
+
     ret->price = price;
     ret->firstordernode = ordernode;
     ret->prev = prev;
     ret->next = next;
-    
+
     return ret;
 }
 
@@ -206,16 +206,16 @@ LEVEL * init_level (int price, ORDERNODE * ordernode, LEVEL * prev, LEVEL * next
 FILL * init_fill (int price, int qty, char * ts)
 {
     FILL * ret;
-    
+
     DebugInfo.inits_of_fill++;
-    
+
     ret = malloc(sizeof(FILL));
     check_ptr_or_quit(ret);
-    
+
     ret->price = price;
     ret->qty = qty;
     ret->ts = ts;
-    
+
     return ret;
 }
 
@@ -223,16 +223,16 @@ FILL * init_fill (int price, int qty, char * ts)
 FILLNODE * init_fillnode (FILL * fill, FILLNODE * prev, FILLNODE * next)
 {
     FILLNODE * ret;
-    
+
     DebugInfo.inits_of_fillnode++;
-    
+
     ret = malloc(sizeof(FILLNODE));
     check_ptr_or_quit(ret);
-    
+
     ret->fill = fill;
     ret->prev = prev;
     ret->next = next;
-    
+
     return ret;
 }
 
@@ -240,16 +240,16 @@ FILLNODE * init_fillnode (FILL * fill, FILLNODE * prev, FILLNODE * next)
 ORDERNODE * init_ordernode (ORDER * order, ORDERNODE * prev, ORDERNODE * next)
 {
     ORDERNODE * ret;
-    
+
     DebugInfo.inits_of_ordernode++;
-    
+
     ret = malloc(sizeof(ORDERNODE));
     check_ptr_or_quit(ret);
-    
+
     ret->order = order;
     ret->prev = prev;
     ret->next = next;
-    
+
     return ret;
 }
 
@@ -257,7 +257,7 @@ ORDERNODE * init_ordernode (ORDER * order, ORDERNODE * prev, ORDERNODE * next)
 int next_id (int no_iterate_flag)
 {
     static int id = 0;
-    
+
     if (id == MAXORDERS)         // Stop iterating
     {
         return MAXORDERS;
@@ -278,7 +278,7 @@ int next_id (int no_iterate_flag)
 void safe_strcpy (char * dest, char * source, size_t size)
 {
     size_t n;
-    
+
     if (size == 0) return;              // size_t is unsigned, 0 is lowest possible
     for (n = 0; n < size - 1; n++)
     {
@@ -295,26 +295,26 @@ char * new_timestamp (void)
     char * timestamp;
     time_t t;
     struct tm * ti;
-    
+
     timestamp = malloc(SMALLSTRING);
     check_ptr_or_quit(timestamp);
-    
+
     t = time(NULL);
-    
+
     if (t != (time_t) -1)
     {
         ti = gmtime(&t);
     } else {
         ti = NULL;
     }
-    
+
     if (ti)
     {
         snprintf(timestamp, SMALLSTRING, "%d-%02d-%02dT%02d:%02d:%02d.0000Z", ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday, ti->tm_hour, ti->tm_min, ti->tm_sec);
     } else {
         snprintf(timestamp, SMALLSTRING, "Unknown");
     }
-    
+
     return timestamp;
 }
 
@@ -322,12 +322,12 @@ char * new_timestamp (void)
 ORDER * init_order (ACCOUNT * account, int qty, int price, int direction, int orderType, int id)
 {
     ORDER * ret;
-    
+
     DebugInfo.inits_of_order++;
-    
+
     ret = malloc(sizeof(ORDER));
     check_ptr_or_quit(ret);
-    
+
     ret->direction = direction;
     ret->originalQty = qty;
     ret->qty = qty;
@@ -341,18 +341,18 @@ ORDER * init_order (ACCOUNT * account, int qty, int price, int direction, int or
     ret->open = 1;
 
     // Now deal with the global order storage...
-    
+
     while (id >= CurrentOrderArrayLen)
     {
         AllOrders = realloc(AllOrders, (CurrentOrderArrayLen + 8192) * sizeof(ORDER *));
         check_ptr_or_quit(AllOrders);
         CurrentOrderArrayLen += 8192;
-        
+
         DebugInfo.reallocs_of_global_order_list++;
     }
     AllOrders[id] = ret;
     HighestKnownOrder = id;
-    
+
     return ret;
 }
 
@@ -360,13 +360,13 @@ ORDER * init_order (ACCOUNT * account, int qty, int price, int direction, int or
 ORDER_AND_ERROR * init_o_and_e (void)
 {
     ORDER_AND_ERROR * ret;
-    
+
     ret = malloc(sizeof(ORDER_AND_ERROR));
     check_ptr_or_quit(ret);
-    
+
     ret->order = NULL;
     ret->error = 0;
-    
+
     return ret;
 }
 
@@ -374,11 +374,11 @@ ORDER_AND_ERROR * init_o_and_e (void)
 void update_account (ACCOUNT * account, int quantity, int price, int direction)
 {
     int64_t tmp64;
-    
+
     assert(account);
 
     // Update shares...
-    
+
     if (direction == BUY)
     {
         if (account->shares > 0)
@@ -405,11 +405,11 @@ void update_account (ACCOUNT * account, int quantity, int price, int direction)
             account->shares -= quantity;
         }
     }
-    
+
     // Update cents...
-    
+
     tmp64 = account->cents;
-    
+
     if (direction == BUY)
     {
         tmp64 -= (int64_t) price * (int64_t) quantity;
@@ -428,10 +428,10 @@ void update_account (ACCOUNT * account, int quantity, int price, int direction)
             account->cents = (int) tmp64;
         }
     }
-    
+
     if (account->shares < account->posmin) account->posmin = account->shares;
     if (account->shares > account->posmax) account->posmax = account->shares;
-    
+
     return;
 }
 
@@ -443,31 +443,31 @@ void cross (ORDER * standing, ORDER * incoming)
     char * ts;
     FILLNODE * currentfillnode;
     FILL * fill;
-    
+
     ts = new_timestamp();
-    
+
     if (standing->qty < incoming->qty)
     {
         quantity = standing->qty;
     } else {
         quantity = incoming->qty;
     }
-    
+
     standing->qty -= quantity;
     standing->totalFilled += quantity;
     incoming->qty -= quantity;
     incoming->totalFilled += quantity;
-    
+
     price = standing->price;
 
     LastTradeTime = ts;
     LastPrice = price;
     LastSize = quantity;
-    
+
     fill = init_fill(price, quantity, ts);
 
     // Figure out where to put the fill...
-    
+
     if (standing->firstfillnode == NULL)
     {
         standing->firstfillnode = init_fillnode(fill, NULL, NULL);
@@ -479,9 +479,9 @@ void cross (ORDER * standing, ORDER * incoming)
         }
         currentfillnode->next = init_fillnode(fill, currentfillnode, NULL);
     }
-    
+
     // Again for other order...
-    
+
     if (incoming->firstfillnode == NULL)
     {
         incoming->firstfillnode = init_fillnode(fill, NULL, NULL);
@@ -493,12 +493,12 @@ void cross (ORDER * standing, ORDER * incoming)
         }
         currentfillnode->next = init_fillnode(fill, currentfillnode, NULL);
     }
-    
+
     if (standing->qty == 0) standing->open = 0;
     if (incoming->qty == 0) incoming->open = 0;
-    
+
     // Fix the positions of the 2 accounts...
-    
+
     if (standing->direction == BUY)
     {
         update_account(standing->account, quantity, price, BUY);
@@ -507,7 +507,7 @@ void cross (ORDER * standing, ORDER * incoming)
         update_account(standing->account, quantity, price, SELL);
         update_account(incoming->account, quantity, price, BUY);
     }
-    
+
     return;
 }
 
@@ -516,13 +516,13 @@ void run_order (ORDER * order)
 {
     LEVEL * current_level;
     ORDERNODE * current_node;
-    
+
     if (order->direction == SELL)
     {
         for (current_level = FirstBidLevel; current_level != NULL; current_level = current_level->next)
         {
             if (current_level->price < order->price && order->orderType != MARKET) return;
-            
+
             for (current_node = current_level->firstordernode; current_node != NULL; current_node = current_node->next)
             {
                 cross(current_node->order, order);
@@ -541,7 +541,7 @@ void run_order (ORDER * order)
             }
         }
     }
-    
+
     return;
 }
 
@@ -552,13 +552,13 @@ void cleanup_closed_bids (void)
     LEVEL * old_level;
     ORDERNODE * current_node;
     ORDERNODE * old_node;
-    
+
     if (FirstBidLevel == NULL) return;
-    
+
     current_level = FirstBidLevel;
     current_node = current_level->firstordernode;
     assert(current_node != NULL);
-    
+
     while (1)
     {
         if (current_node->order->open)
@@ -569,7 +569,7 @@ void cleanup_closed_bids (void)
             FirstBidLevel->prev = NULL;
             return;
         }
-        
+
         if (current_node->next != NULL)
         {
             old_node = current_node;
@@ -602,13 +602,13 @@ void cleanup_closed_asks (void)     // This and the above could be consolidated 
     LEVEL * old_level;
     ORDERNODE * current_node;
     ORDERNODE * old_node;
-    
+
     if (FirstAskLevel == NULL) return;
-    
+
     current_level = FirstAskLevel;
     current_node = current_level->firstordernode;
     assert(current_node != NULL);
-    
+
     while (1)
     {
         if (current_node->order->open)
@@ -619,7 +619,7 @@ void cleanup_closed_asks (void)     // This and the above could be consolidated 
             FirstAskLevel->prev = NULL;
             return;
         }
-        
+
         if (current_node->next != NULL)
         {
             old_node = current_node;
@@ -645,7 +645,7 @@ void cleanup_closed_asks (void)     // This and the above could be consolidated 
     return;
 }
 
-    
+
 void insert_ask (ORDER * order)
 {
     ORDERNODE * ordernode;
@@ -653,9 +653,9 @@ void insert_ask (ORDER * order)
     LEVEL * prev_level = NULL;
     LEVEL * level;
     LEVEL * newlevel;
-    
+
     ordernode = init_ordernode(order, NULL, NULL);      // Fix ->prev later
-    
+
     if (FirstAskLevel == NULL)
     {
         FirstAskLevel = init_level(order->price, ordernode, NULL, NULL);
@@ -663,13 +663,13 @@ void insert_ask (ORDER * order)
     } else {
         level = FirstAskLevel;
     }
-    
+
     while (1)
     {
         if (order->price < level->price)
         {
             // Create new level...
-            
+
             newlevel = init_level(order->price, ordernode, prev_level, level);
             level->prev = newlevel;
             if (prev_level)
@@ -679,15 +679,15 @@ void insert_ask (ORDER * order)
                 FirstAskLevel = newlevel;
             }
             return;
-            
+
         } else if (order->price == level->price) {
-            
+
             break;
-            
+
         } else {
-            
+
             // Iterate...
-            
+
             prev_level = level;
             if (level->next != NULL)
             {
@@ -698,22 +698,22 @@ void insert_ask (ORDER * order)
             }
         }
     }
-    
+
     // So we should be on the right level now
-    
+
     assert(level->price == order->price);
-    
+
     current_node = level->firstordernode;
     assert(current_node != NULL);
-    
+
     while (current_node->next != NULL)
     {
         current_node = current_node->next;
     }
-    
+
     current_node->next = ordernode;
     ordernode->prev = current_node;
-    
+
     return;
 }
 
@@ -725,9 +725,9 @@ void insert_bid (ORDER * order)
     LEVEL * prev_level = NULL;
     LEVEL * level;
     LEVEL * newlevel;
-    
+
     ordernode = init_ordernode(order, NULL, NULL);      // Fix ->prev later
-    
+
     if (FirstBidLevel == NULL)
     {
         FirstBidLevel = init_level(order->price, ordernode, NULL, NULL);
@@ -735,13 +735,13 @@ void insert_bid (ORDER * order)
     } else {
         level = FirstBidLevel;
     }
-    
+
     while (1)
     {
         if (order->price > level->price)
         {
             // Create new level...
-            
+
             newlevel = init_level(order->price, ordernode, prev_level, level);
             level->prev = newlevel;
             if (prev_level)
@@ -751,15 +751,15 @@ void insert_bid (ORDER * order)
                 FirstBidLevel = newlevel;
             }
             return;
-            
+
         } else if (order->price == level->price) {
-            
+
             break;
-            
+
         } else {
-            
+
             // Iterate...
-            
+
             prev_level = level;
             if (level->next != NULL)
             {
@@ -770,22 +770,22 @@ void insert_bid (ORDER * order)
             }
         }
     }
-    
+
     // So we should be on the right level now
-    
+
     assert(level->price == order->price);
-    
+
     current_node = level->firstordernode;
     assert(current_node != NULL);
-    
+
     while (current_node->next != NULL)
     {
         current_node = current_node->next;
     }
-    
+
     current_node->next = ordernode;
     ordernode->prev = current_node;
-    
+
     return;
 }
 
@@ -793,10 +793,10 @@ void insert_bid (ORDER * order)
 int fok_can_buy (int qty, int price)
 {
     // Must use subtraction only. Adding could overflow.
-    
+
     LEVEL * level;
     ORDERNODE * ordernode;
-    
+
     for (level = FirstAskLevel; level != NULL && level->price <= price; level = level->next)
     {
         for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
@@ -805,7 +805,7 @@ int fok_can_buy (int qty, int price)
             if (qty <= 0) return 1;
         }
     }
-    
+
     return 0;
 }
 
@@ -813,10 +813,10 @@ int fok_can_buy (int qty, int price)
 int fok_can_sell (int qty, int price)
 {
     // Must use subtraction only. Adding could overflow.
-    
+
     LEVEL * level;
     ORDERNODE * ordernode;
-    
+
     for (level = FirstBidLevel; level != NULL && level->price >= price; level = level->next)
     {
         for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
@@ -825,7 +825,7 @@ int fok_can_sell (int qty, int price)
             if (qty <= 0) return 1;
         }
     }
-    
+
     return 0;
 }
 
@@ -833,23 +833,23 @@ int fok_can_sell (int qty, int price)
 ACCOUNT * init_account (char * name)
 {
     ACCOUNT * ret;
-    
+
     DebugInfo.inits_of_account++;
-    
+
     ret = malloc(sizeof(ACCOUNT));
     check_ptr_or_quit(ret);
-    
+
     safe_strcpy(ret->name, name, SMALLSTRING);
-    
+
     ret->orders = NULL;
     ret->arraylen = 0;
     ret->count = 0;
-    
+
     ret->posmin = 0;
     ret->posmax = 0;
     ret->shares = 0;
     ret->cents = 0;
-    
+
     return ret;
 }
 
@@ -857,36 +857,36 @@ ACCOUNT * init_account (char * name)
 ACCOUNT * account_lookup_or_create (char * account_name, int account_int)
 {
     int n;
-    
+
     // If account_id is too high, we will need more storage...
-    
+
     while (account_int >= CurrentAccountArrayLen)
     {
         AllAccounts = realloc(AllAccounts, (CurrentAccountArrayLen + 64) * sizeof(ACCOUNT *));
         check_ptr_or_quit(AllAccounts);
         CurrentAccountArrayLen += 64;
-        
+
         // We must NULLify our new account pointers because there can be holes in the known
         // account IDs: e.g. known IDs are 0,1,2,3,7. So, if we're asked to lookup ID 5, we
         // need a way to know it doesn't exist...
-        
+
         for (n = CurrentAccountArrayLen - 64; n < CurrentAccountArrayLen; n++)
         {
             AllAccounts[n] = NULL;
         }
-        
+
         DebugInfo.reallocs_of_global_account_list++;
     }
 
     // If the account corresponsing to the account_id is NULL, create it...
-    
+
     if (AllAccounts[account_int] == NULL)
     {
         AllAccounts[account_int] = init_account(account_name);
     }
-    
+
     // Done...
-    
+
     return AllAccounts[account_int];
 }
 
@@ -898,12 +898,12 @@ void add_order_to_account (ORDER * order, ACCOUNT * accountobject)
         accountobject->orders = realloc(accountobject->orders, (accountobject->arraylen + 256) * sizeof(ORDER *));
         check_ptr_or_quit(accountobject->orders);
         accountobject->arraylen += 256;
-        
+
         DebugInfo.reallocs_of_account_order_list++;
     }
     accountobject->orders[accountobject->count] = order;
     accountobject->count += 1;
-    
+
     return;
 }
 
@@ -911,30 +911,30 @@ void add_order_to_account (ORDER * order, ACCOUNT * accountobject)
 ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, int price, int direction, int orderType)
 {
     // Note: account_name will be in the stack of the calling function, not in the heap
-    
+
     ORDER * order;
     ORDER_AND_ERROR * o_and_e;
     int id;
     ACCOUNT * accountobject;
-    
+
     id = next_id(0);
-    
+
     // The o_and_e structure lets us send either an order or an error to the caller...
-    
+
     o_and_e = init_o_and_e();
-    
+
     // Check for too high an order ID, too high an account ID, or silly values...
-    
+
     if (id >= MAXORDERS)
     {
         o_and_e->error = TOO_MANY_ORDERS;
         return o_and_e;
-    
+
     } else if (account_int >= MAXACCOUNTS)
     {
         o_and_e->error = TOO_HIGH_ACCOUNT;
         return o_and_e;
-        
+
     } else if (price < 0 || qty < 1 || (direction != SELL && direction != BUY))
     {
         o_and_e->error = SILLY_VALUE;
@@ -943,16 +943,16 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
 
     // The following call gets the account object. If not already extant, it is created.
     // If more memory is needed to store accounts up to this account_id, that happens...
-    
+
     accountobject = account_lookup_or_create(account_name, account_int);
-    
+
     // Create order struct, and store a pointer to it in the account...
-    
+
     order = init_order(accountobject, qty, price, direction, orderType, id);
     add_order_to_account(order, accountobject);
-    
+
     // Run the order, with checks for FOK if needed...
-    
+
     if (order->orderType != FOK)
     {
         run_order(order);
@@ -970,23 +970,23 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
             }
         }
     }
-    
+
     // Iterate through the Bids or Asks as appropriate, removing them from the book if they are now closed...
-    
+
     if (order->direction == SELL)
     {
         cleanup_closed_bids();
     } else {
         cleanup_closed_asks();
     }
-    
+
     // Market orders get set to price == 0 in official for storage / reporting
     // (the timing doesn't matter, this could be done before running the order)
-  
+
     if (order->orderType == MARKET) order->price = 0;
 
     // Place open limit orders on the book. Mark other order types as closed...
-    
+
     if (order->open)
     {
         if (order->orderType == LIMIT)
@@ -1002,7 +1002,7 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
             order->qty = 0;
         }
     }
-    
+
     o_and_e->order = order;
     return o_and_e;
 }
@@ -1011,24 +1011,24 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
 void print_fills (ORDER * order)
 {
     FILLNODE * fillnode;
-    
+
     if (order->firstfillnode == NULL)   // Can do without this block but it's uglier
     {
         printf("\"fills\": []");
         return;
     }
-    
+
     printf("\"fills\": [\n");
-    
+
     fillnode = order->firstfillnode;
-    
+
     while (fillnode != NULL)
     {
         if (fillnode != order->firstfillnode) printf(",\n");
         printf("{\"price\": %d, \"qty\": %d, \"ts\": \"%s\"}", fillnode->fill->price, fillnode->fill->qty, fillnode->fill->ts);
         fillnode = fillnode->next;
     }
-    
+
     printf("\n]");
     return;
 }
@@ -1037,7 +1037,7 @@ void print_fills (ORDER * order)
 void print_order (ORDER * order)
 {
     char orderType_to_print[SMALLSTRING];
-    
+
     if (order->orderType == LIMIT)
     {
         safe_strcpy(orderType_to_print, "limit", SMALLSTRING);
@@ -1050,14 +1050,15 @@ void print_order (ORDER * order)
     } else {
         safe_strcpy(orderType_to_print, "unknown", SMALLSTRING);
     }
-    
-    printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, \"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
+
+    printf( "{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, "
+            "\"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
             Venue, Symbol, order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
             order->id, order->account->name, order->ts, order->totalFilled, order->open ? "true" : "false");
-    
+
     print_fills(order);
     printf("}");
-    
+
     return;
 }
 
@@ -1065,7 +1066,7 @@ void print_order (ORDER * order)
 LEVEL * find_level (int price, int dir)      // Return ptr to level, or return NULL if not present
 {
     LEVEL * level = NULL;
-            
+
     if (dir == BUY)
     {
         level = FirstBidLevel;
@@ -1096,7 +1097,7 @@ LEVEL * find_level (int price, int dir)      // Return ptr to level, or return N
             }
         }
     }
-    
+
     return level;
 }
 
@@ -1104,7 +1105,7 @@ LEVEL * find_level (int price, int dir)      // Return ptr to level, or return N
 ORDERNODE * find_ordernode (LEVEL * level, int id)
 {
     ORDERNODE * ordernode;
-    
+
     if (level)
     {
         for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
@@ -1115,7 +1116,7 @@ ORDERNODE * find_ordernode (LEVEL * level, int id)
             }
         }
     }
-    
+
     return NULL;
 }
 
@@ -1123,26 +1124,26 @@ ORDERNODE * find_ordernode (LEVEL * level, int id)
 void cleanup_after_cancel (ORDERNODE * ordernode, LEVEL * level)       // Free the ordernode, maybe free the level, fix all links
 {
     int dir;
-    
+
     assert(ordernode && level);
-    
+
     dir = ordernode->order->direction;                  // Needed later
-    
-    
+
+
     if (ordernode->prev)
     {
         ordernode->prev->next = ordernode->next;
     } else {
         level->firstordernode = ordernode->next;        // Can set level->firstordernode to NULL, in which case
     }                                                   // the level is now empty and must be destroyed in a bit
-    
+
     if (ordernode->next)
     {
         ordernode->next->prev = ordernode->prev;
     }
-    
+
     free(ordernode);
-    
+
     if (level->firstordernode == NULL)
     {
         if (level->prev)
@@ -1156,15 +1157,15 @@ void cleanup_after_cancel (ORDERNODE * ordernode, LEVEL * level)       // Free t
                 FirstAskLevel = level->next;
             }
         }
-        
+
         if (level->next)
         {
             level->next->prev = level->prev;
         }
-        
+
         free(level);
     }
-    
+
     return;
 }
 
@@ -1173,14 +1174,14 @@ int get_size_from_level (LEVEL * level)
 {
     ORDERNODE * ordernode;
     int ret;
-    
+
     if (level == NULL)
     {
         return 0;
     }
-    
+
     ret = 0;
-    
+
     for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
     {
         if ((2147483647 - ret) - ordernode->order->qty < 0)
@@ -1198,13 +1199,13 @@ int get_depth (LEVEL * level)        // Returns size of this level and all worse
 {
     int onesize;
     int ret;
-    
+
     ret = 0;
 
     for ( ; level != NULL; level = level->next)
     {
         onesize = get_size_from_level(level);
-        
+
         if ((2147483647 - ret) - onesize < 0)
         {
             return 2147483647;
@@ -1222,11 +1223,11 @@ void print_orderbook (void)     // This is really slow and needs help
     LEVEL * level;
     int flag;
     ORDERNODE * ordernode;
-    
+
     ts = new_timestamp();
     printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"%s\",\n", Venue, Symbol, ts);
     free(ts);
-    
+
     printf("\"asks\": [");
     flag = 0;
     for (level = FirstAskLevel; level != NULL; level = level->next)
@@ -1239,7 +1240,7 @@ void print_orderbook (void)     // This is really slow and needs help
         }
     }
     printf("],\n");
-    
+
     printf("\"bids\": [");
     flag = 0;
     for (level = FirstBidLevel; level != NULL; level = level->next)
@@ -1252,7 +1253,7 @@ void print_orderbook (void)     // This is really slow and needs help
         }
     }
     printf("]}");
-    
+
     return;
 }
 
@@ -1261,11 +1262,11 @@ void print_all_orders_of_account (ACCOUNT * account)
 {
     int flag;
     int n;
-    
+
     assert(account);
-    
+
     printf("{\"ok\": true, \"venue\": \"%s\", \"orders\": [", Venue);
-    
+
     flag = 0;
     for (n = 0; n < account->count; n++)
     {
@@ -1273,9 +1274,9 @@ void print_all_orders_of_account (ACCOUNT * account)
         print_order(account->orders[n]);
         flag = 1;
     }
-    
+
     printf("]}");
-    
+
     return;
 }
 
@@ -1286,9 +1287,9 @@ void cancel_order_by_id (int id)
     int price;
     int dir;
     LEVEL * level;
-    
+
     assert(id >= 0 && id <= HighestKnownOrder);
-    
+
     if (AllOrders[id]->orderType != LIMIT)          // Everything else is auto-cancelled after running
     {
         return;
@@ -1296,22 +1297,22 @@ void cancel_order_by_id (int id)
 
     price = AllOrders[id]->price;
     dir = AllOrders[id]->direction;
-    
+
     // Find the level then the ordernode, if possible...
-    
+
     level = find_level(price, dir);
     ordernode = find_ordernode(level, id);      // This is safe even if level == NULL
-    
+
     // Now close the order and do the linked-list fiddling...
-    
+
     if (ordernode)
     {
         ordernode->order->open = 0;
         ordernode->order->qty = 0;
-        
+
         cleanup_after_cancel(ordernode, level);   // Frees the node and even the level if needed; fixes links
     }
-    
+
     return;
 }
 
@@ -1329,21 +1330,21 @@ void print_quote (void)
     char * ts;
     char buildup[MAXSTRING];
     char part[MAXSTRING];
-    
+
     bidSize = get_size_from_level(FirstBidLevel);
     bidDepth = get_depth(FirstBidLevel);
     askSize = get_size_from_level(FirstAskLevel);
     askDepth = get_depth(FirstAskLevel);
-    
+
     ts = new_timestamp();
-    
+
     // Add all the fields that are always present...
     snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %d, "
                                  "\"askSize\": %d, \"bidDepth\": %d, \"askDepth\": %d, \"quoteTime\": \"%s\"",
              Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
 
     free(ts);
-    
+
     if (FirstBidLevel)
     {
         bid = FirstBidLevel->price;
@@ -1357,7 +1358,7 @@ void print_quote (void)
         snprintf(part, MAXSTRING, ", \"ask\": %d", ask);
         strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
     }
-    
+
     if (LastTradeTime)
     {
         snprintf(part, MAXSTRING, ", \"lastTrade\": \"%s\", \"lastSize\": %d, \"last\": %d", LastTradeTime, LastSize, LastPrice);
@@ -1365,9 +1366,9 @@ void print_quote (void)
     }
 
     strncat(buildup, "}", MAXSTRING - strlen(buildup) - 1);
-    
+
     printf("%s", buildup);
-    
+
     return;
 }
 
@@ -1378,7 +1379,7 @@ void print_scores (void)
     int64_t nav64;
     char * ts;
     int n;
-    
+
     printf("<html><head><title>disorderBook Scores</title></head><body><pre>%s %s\n", Venue, Symbol);
 
     if (LastPrice == -1)
@@ -1386,25 +1387,25 @@ void print_scores (void)
         printf("No trading activity yet.</pre>");
         return;
     }
-    
+
     printf("Current price: $%d.%02d\n\n", LastPrice / 100, LastPrice % 100);
-    
+
     printf("             Account           USD $          Shares         Pos.min         Pos.max           NAV $\n");
-    
+
     for (n = 0; n < CurrentAccountArrayLen; n++)
     {
         if (AllAccounts[n])
         {
             account = AllAccounts[n];
-            
+
             // NAV will be printed as 32-bit, but we calculate it using 64 bits.
             //
             // We go through a huge amount of rigmarole to avoid overflows of the 64-bit number...
             // The value of our position is guaranteed to fit inside a 64-bit int, but when we add
             // our cash to it, it might overflow.
-            
+
             nav64 = (int64_t) account->shares * (int64_t) LastPrice;    // Cash not counted yet
-            
+
             if (nav64 > 0)
             {
                 if (nav64 - 2147483647 > 2147483647)
@@ -1421,21 +1422,21 @@ void print_scores (void)
                     nav64 += account->cents;
                 }
             }
-            
+
             if (nav64 > 2147483647) nav64 = 2147483647;
             if (nav64 < -2147483647) nav64 = -2147483647;
-            
+
             printf("%20s %15d %15d %15d %15d %15d\n",
                    account->name, account->cents / 100, account->shares, account->posmin, account->posmax, (int) nav64 / 100);
         }
     }
-    
+
     ts = new_timestamp();
     printf("\n  Start time: %s\nCurrent time: %s", StartTime, ts);
     free(ts);
-    
+
     printf("</pre></body></html>");
-    
+
     return;
 }
 
@@ -1444,7 +1445,7 @@ void print_memory_info (void)
 {
     printf( "DebugInfo.inits_of_level: %d,\n"               // The compiler auto-concatenates these things
             "DebugInfo.inits_of_fill: %d,\n"                // (note the lack of commas)
-            "DebugInfo.inits_of_fillnode: %d,\n" 
+            "DebugInfo.inits_of_fillnode: %d,\n"
             "DebugInfo.inits_of_order: %d,\n"
             "DebugInfo.inits_of_ordernode: %d,\n"
             "DebugInfo.inits_of_account: %d,\n"
@@ -1475,25 +1476,25 @@ int main (int argc, char ** argv)
     int id;
     int n;
     ORDER_AND_ERROR * o_and_e;
-    
+
     assert(argc == 3);
-    
+
     safe_strcpy(Venue, argv[1], SMALLSTRING);
     safe_strcpy(Symbol, argv[2], SMALLSTRING);
-    
+
     StartTime = new_timestamp();
-    
+
     while (1)
     {
         eofcheck = fgets(input, MAXSTRING, stdin);
-        
+
         if (eofcheck == NULL)           // i.e. we HAVE reached EOF
         {
             printf("{\"ok\": false, \"error\": \"Unexpected EOF on stdin. Quitting.\"}");
             end_message();
             return 1;
         }
-        
+
         token_count = 0;
         tmp = strtok(input, " \t\n\r");
         for (n = 0; n < MAXTOKENS; n++)
@@ -1506,14 +1507,14 @@ int main (int argc, char ** argv)
                 tmp = strtok(NULL, " \t\n\r");
             }
         }
-        
+
         // Now handle whatever the request was.........
-        
+
         if (strcmp("ORDER", tokens[0]) == 0)
         {
             o_and_e = execute_order(tokens[1], atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]), atoi(tokens[6]));
             //                      account    account_int      qty              price            direction        orderType
-            
+
             if (o_and_e->error)
             {
                 printf("{\"ok\": false, \"error\": \"Backend error %d\"}", o_and_e->error);
@@ -1521,22 +1522,22 @@ int main (int argc, char ** argv)
                 print_order(o_and_e->order);
             }
             free(o_and_e);
-            
+
             end_message();
             continue;
         }
-        
+
         if (strcmp("ORDERBOOK", tokens[0]) == 0)
         {
             print_orderbook();
             end_message();
             continue;
         }
-        
+
         if (strcmp("STATUS", tokens[0]) == 0)
         {
             id = atoi(tokens[1]);
-            
+
             if (id < 0 || id > HighestKnownOrder)
             {
                 printf("{\"ok\": false, \"error\": \"No such ID\"}");
@@ -1547,11 +1548,11 @@ int main (int argc, char ** argv)
             end_message();
             continue;
         }
-        
+
         if (strcmp("STATUSALL", tokens[0]) == 0)
         {
             // This can return a stupid amount of data. Frontend might want to not honour requests for this.
-            
+
             id = atoi(tokens[1]);       // id is an account id in this case
 
             if (id < 0 || id >= CurrentAccountArrayLen || AllAccounts[id] == NULL)      // The order matters here (short-circuit)
@@ -1564,11 +1565,11 @@ int main (int argc, char ** argv)
             end_message();
             continue;
         }
-        
+
         if (strcmp("CANCEL", tokens[0]) == 0)
         {
             id = atoi(tokens[1]);
-            
+
             if (id < 0 || id > HighestKnownOrder)
             {
                 printf("{\"ok\": false, \"error\": \"No such ID\"}");
@@ -1576,11 +1577,11 @@ int main (int argc, char ** argv)
                 cancel_order_by_id(id);
                 print_order(AllOrders[id]);
             }
-            
+
             end_message();
             continue;
         }
-        
+
         if (strcmp("QUOTE", tokens[0]) == 0)
         {
             print_quote();
@@ -1591,36 +1592,36 @@ int main (int argc, char ** argv)
         if (strcmp("__ACC_FROM_ID__", tokens[0]) == 0)
         {
             id = atoi(tokens[1]);
-            
+
             if (id < 0 || id > HighestKnownOrder)
             {
                 printf("ERROR None");
             } else {
                 printf("OK %s", AllOrders[id]->account->name);
             }
-            
+
             end_message();
             continue;
         }
-        
+
         if (strcmp("__DEBUG_MEMORY__", tokens[0]) == 0)
         {
             print_memory_info();
             end_message();
             continue;
         }
-        
+
         if (strcmp("__SCORES__", tokens[0]) == 0)
         {
             print_scores();
             end_message();
             continue;
         }
-        
+
         printf("{\"ok\": false, \"error\": \"Did not comprehend\"}");
         end_message();
         continue;
     }
-    
+
     return 0;
 }
