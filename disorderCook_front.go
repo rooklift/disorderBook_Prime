@@ -42,28 +42,34 @@ type OptionsStruct struct {
     Excess              bool
 }
 
-const HEARTBEAT_OK      = `{"ok": true, "error": ""}`
-const UNKNOWN_PATH      = `{"ok": false, "error": "Unknown path"}`
-const UNKNOWN_VENUE     = `{"ok": false, "error": "Unknown venue"}`
-const UNKNOWN_SYMBOL    = `{"ok": false, "error": "Venue is known but symbol is not"}`
-const BAD_JSON          = `{"ok": false, "error": "Failed to parse incoming JSON"}`
-const URL_MISMATCH      = `{"ok": false, "error": "Venue or symbol in URL did not match that in POST"}`
-const MISSING_FIELD     = `{"ok": false, "error": "Missing key or unacceptable value in POST"}`
-const UNKNOWN_ORDER     = `{"ok": false, "error": "Unknown order ID"}`
-const BAD_ORDER         = `{"ok": false, "error": "Couldn't parse order ID"}`
-const AUTH_FAILURE      = `{"ok": false, "error": "Unknown account or wrong API key"}`
-const NO_VENUE_HEART    = `{"ok": false, "error": "Venue not up (create it by using it)"}`
-const TOO_MANY_BOOKS    = `{"ok": false, "error": "Book limit exceeded! (See command line options)"}`
-const NOT_IMPLEMENTED   = `{"ok": false, "error": "Not implemented"}`
-const DISABLED          = `{"ok": false, "error": "Disabled or not enabled. (See command line options)"}`
+const (
+    HEARTBEAT_OK      = `{"ok": true, "error": ""}`
+    UNKNOWN_PATH      = `{"ok": false, "error": "Unknown path"}`
+    UNKNOWN_VENUE     = `{"ok": false, "error": "Unknown venue"}`
+    UNKNOWN_SYMBOL    = `{"ok": false, "error": "Venue is known but symbol is not"}`
+    BAD_JSON          = `{"ok": false, "error": "Failed to parse incoming JSON"}`
+    URL_MISMATCH      = `{"ok": false, "error": "Venue or symbol in URL did not match that in POST"}`
+    MISSING_FIELD     = `{"ok": false, "error": "Missing key or unacceptable value in POST"}`
+    UNKNOWN_ORDER     = `{"ok": false, "error": "Unknown order ID"}`
+    BAD_ORDER         = `{"ok": false, "error": "Couldn't parse order ID"}`
+    AUTH_FAILURE      = `{"ok": false, "error": "Unknown account or wrong API key"}`
+    NO_VENUE_HEART    = `{"ok": false, "error": "Venue not up (create it by using it)"}`
+    TOO_MANY_BOOKS    = `{"ok": false, "error": "Book limit exceeded! (See command line options)"}`
+    NOT_IMPLEMENTED   = `{"ok": false, "error": "Not implemented"}`
+    DISABLED          = `{"ok": false, "error": "Disabled or not enabled. (See command line options)"}`
+)
 
-const BUY = 1
-const SELL = 2
+const (
+    BUY = 1
+    SELL = 2
+)
 
-const LIMIT = 1
-const MARKET = 2
-const FOK = 3
-const IOC = 4
+const (
+    LIMIT = 1
+    MARKET = 2
+    FOK = 3
+    IOC = 4
+)
 
 const FRONTPAGE = `<html>
     <head><title>disorderBook</title></head>
