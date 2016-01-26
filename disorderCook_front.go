@@ -175,9 +175,211 @@ func getresponse (command string, venue string, symbol string) string {
     return response
 }
 
+func get_binary_orderbook_to_json (venue string, symbol string) string {
+
+    v := Books[venue]
+    if v == nil {
+        return UNKNOWN_VENUE
+    }
+
+    s := Books[venue][symbol]
+    if s == nil {
+        return UNKNOWN_SYMBOL
+    }
+
+    Locks[venue][symbol].Lock()
+
+    // rawdata := make([]byte, 0, 1024)
+
+    reader := bufio.NewReader(Books[venue][symbol].stdout)
+    fmt.Fprintf(Books[venue][symbol].stdin, "ORDERBOOK_BINARY\n")
+
+    var nextbyte byte
+    // var count int
+    // var nulls_seen int
+    var err error
+
+    // nullmessage := []byte{0,0,0,0,0,0,0,0}
+
+    var qty uint32
+    var price uint32
+    var flag bool
+
+    // output := fmt.Sprintf(`{"ok": true, "venue": "%s", "symbol": "%s", "bids": [`, venue, symbol)
+
+    output := make([]byte, 0, 1024)
+    output = append(output, `{"ok": true, "venue": "`...)
+    output = append(output, venue...)
+    output = append(output, `", "symbol": "`...)
+    output = append(output, symbol...)
+    output = append(output, `", "bids": [`...)
+
+    flag = false
+    for {
+        qty = 0
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                qty += uint32(nextbyte) << 24
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                qty += uint32(nextbyte) << 16
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                qty += uint32(nextbyte) << 8
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                qty += uint32(nextbyte)
+                break
+            }
+        }
+
+        price = 0
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                price += uint32(nextbyte) << 24
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                price += uint32(nextbyte) << 16
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                price += uint32(nextbyte) << 8
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                price += uint32(nextbyte)
+                break
+            }
+        }
+
+        if qty != 0 {
+            if flag {
+                output = append(output, `, `...)
+            }
+            output = append(output, `{"price": `...)
+            output = append(output, strconv.FormatUint(uint64(price), 10)...)
+            output = append(output, `, "qty": `...)
+            output = append(output, strconv.FormatUint(uint64(qty), 10)...)
+            output = append(output, `, "isBuy": true}`...)
+            flag = true
+        } else {
+            break
+        }
+    }
+
+    output = append(output, `], "asks": [`...)
+
+    flag = false
+    for {
+        qty = 0
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                qty += uint32(nextbyte) << 24
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                qty += uint32(nextbyte) << 16
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                qty += uint32(nextbyte) << 8
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                qty += uint32(nextbyte)
+                break
+            }
+        }
+
+        price = 0
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                price += uint32(nextbyte) << 24
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                price += uint32(nextbyte) << 16
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                price += uint32(nextbyte) << 8
+                break
+            }
+        }
+        for {
+            nextbyte, err = reader.ReadByte()
+            if err == nil {
+                price += uint32(nextbyte)
+                break
+            }
+        }
+
+        if qty != 0 {
+            if flag {
+                output = append(output, `, `...)
+            }
+            output = append(output, `{"price": `...)
+            output = append(output, strconv.FormatUint(uint64(price), 10)...)
+            output = append(output, `, "qty": `...)
+            output = append(output, strconv.FormatUint(uint64(qty), 10)...)
+            output = append(output, `, "isBuy": true}`...)
+            flag = true
+        } else {
+            break
+        }
+    }
+
+    Locks[venue][symbol].Unlock()       // This matters!
+
+    output = append(output, `], "ts": "FIXME"}`...)
+
+    return string(output[:])
+}
+
 func handler(writer http.ResponseWriter, request * http.Request) {
 
-    writer.Header().Set("Content-Type", "application/json")
+    writer.Header().Set("Content-Type", "application/json")     // A few things change this later
 
     request_api_key := request.Header.Get("X-Starfighter-Authorization")
     if request_api_key == "" {
@@ -314,7 +516,7 @@ func handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
 
-            res := getresponse("ORDERBOOK", venue, symbol)
+            res := get_binary_orderbook_to_json(venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -566,6 +768,8 @@ func main() {
     if Options.AccountFilename != "" {
         load_auth()
         AuthMode = true
+    } else {
+        fmt.Printf("\n -----> Warning: running WITHOUT AUTHENTICATION! <-----\n")
     }
 
     http.HandleFunc("/", handler)

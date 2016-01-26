@@ -46,6 +46,11 @@
 #include <string.h>
 #include <time.h>
 
+// On Windows, need this so we can use _setmode so we don't send \r\n
+#if defined(_WIN32)
+    #include <fcntl.h>
+#endif
+
 #define BUY 1       // Don't change these now, they are also used in the frontend
 #define SELL 2
 
@@ -1257,6 +1262,90 @@ void print_orderbook (void)     // This is really slow and needs help
     return;
 }
 
+void print_orderbook_binary (void)
+{
+    /*
+    Strategy for binary printout of the orderbook. Qty is never 0, so 0 qty can be used as an in-channel flag.
+
+    Format then is:
+
+    all bids ... flag ... all asks ... flag
+    using 8 bytes per message (e.g. 1 order or 1 flag takes 8 bytes)
+
+    e.g for a book with 2 bids and 2 asks:
+
+    4bytes (qty)
+    4bytes (price)
+    4bytes (qty)
+    4bytes (price)
+    0x00000000 (zero qty: flag)
+    0x00000000 (for consistency, i.e. 8 bytes per message)
+    4bytes (qty)
+    4bytes (price)
+    4bytes (qty)
+    4bytes (price)
+    0x00000000 (zero qty: flag)
+    0x00000000 (for consistency, i.e. 8 bytes per message)
+
+    Since we must choose an endian system, we will choose BIG (go big endian or go home).
+    */
+
+    LEVEL * level;
+    ORDERNODE * ordernode;
+
+    int n;
+    uint32_t qty;       // the order qty and price are signed ints not exceeding 2^31
+    uint32_t price;     // but promotion to unsigned here seems perfectly fine
+
+    for (level = FirstBidLevel; level != NULL; level = level->next)
+    {
+        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
+        {
+            qty = (uint32_t) ordernode->order->qty;
+            putc((qty & 0xFF000000) >> 24, stdout);
+            putc((qty & 0x00FF0000) >> 16, stdout);
+            putc((qty & 0x0000FF00) >>  8, stdout);
+            putc((qty & 0x000000FF)      , stdout);
+
+            price = (uint32_t) ordernode->order->price;
+            putc((price & 0xFF000000) >> 24, stdout);
+            putc((price & 0x00FF0000) >> 16, stdout);
+            putc((price & 0x0000FF00) >>  8, stdout);
+            putc((price & 0x000000FF)      , stdout);
+        }
+    }
+
+    for (n = 0; n < 8; n++)
+    {
+        putc('\0', stdout);
+    }
+
+    for (level = FirstAskLevel; level != NULL; level = level->next)
+    {
+        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
+        {
+            qty = (uint32_t) ordernode->order->qty;
+            putc((qty & 0xFF000000) >> 24, stdout);
+            putc((qty & 0x00FF0000) >> 16, stdout);
+            putc((qty & 0x0000FF00) >>  8, stdout);
+            putc((qty & 0x000000FF)      , stdout);
+
+            price = (uint32_t) ordernode->order->price;
+            putc((price & 0xFF000000) >> 24, stdout);
+            putc((price & 0x00FF0000) >> 16, stdout);
+            putc((price & 0x0000FF00) >>  8, stdout);
+            putc((price & 0x000000FF)      , stdout);
+        }
+    }
+
+    for (n = 0; n < 8; n++)
+    {
+        putc('\0', stdout);
+    }
+
+    return;
+}
+
 
 void print_all_orders_of_account (ACCOUNT * account)
 {
@@ -1479,6 +1568,11 @@ int main (int argc, char ** argv)
 
     assert(argc == 3);
 
+    // On Windows, set stdout to not auto-convert \n into \r\n (messes with our binary orderbook)
+    #if defined(_WIN32)
+        _setmode(_fileno(stdout), _O_BINARY);
+    #endif
+
     safe_strcpy(Venue, argv[1], SMALLSTRING);
     safe_strcpy(Symbol, argv[2], SMALLSTRING);
 
@@ -1531,6 +1625,13 @@ int main (int argc, char ** argv)
         {
             print_orderbook();
             end_message();
+            continue;
+        }
+
+        if (strcmp("ORDERBOOK_BINARY", tokens[0]) == 0)
+        {
+            print_orderbook_binary();
+            fflush(stdout);             // no end_message() call for binary
             continue;
         }
 
