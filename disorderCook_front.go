@@ -189,23 +189,15 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
 
     Locks[venue][symbol].Lock()
 
-    // rawdata := make([]byte, 0, 1024)
-
     reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, "ORDERBOOK_BINARY\n")
 
     var nextbyte byte
-    // var count int
-    // var nulls_seen int
     var err error
-
-    // nullmessage := []byte{0,0,0,0,0,0,0,0}
 
     var qty uint32
     var price uint32
     var flag bool
-
-    // output := fmt.Sprintf(`{"ok": true, "venue": "%s", "symbol": "%s", "bids": [`, venue, symbol)
 
     output := make([]byte, 0, 1024)
     output = append(output, `{"ok": true, "venue": "`...)
@@ -370,7 +362,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
         }
     }
 
-    Locks[venue][symbol].Unlock()       // This matters!
+    Locks[venue][symbol].Unlock()
 
     output = append(output, `], "ts": "FIXME"}`...)
 
