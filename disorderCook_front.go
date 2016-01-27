@@ -656,6 +656,18 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
     return
 }
 
+/*
+WebSocket strategy:
+
+For each incoming WS connection, the goroutine ws_handler() puts an entry
+in a global struct, storing account, venue, and symbol (some of which
+are optional). It also stores a channel used for communication.
+
+Each C backend sends messages to stderr. There is one goroutine per
+backend -- ws_controller() -- that reads these messages and passes them
+on via the channel (only sending to the correct clients).
+*/
+
 func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
     // http://www.gorillatoolkit.org/pkg/websocket
@@ -728,6 +740,8 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
     }
 }
 
+// See comments above for WebSocket strategy.
+
 func ws_controller(venue string, symbol string) {
 
     reader := bufio.NewReader(Books[venue][symbol].stderr)
@@ -743,6 +757,8 @@ func ws_controller(venue string, symbol string) {
                 break
             }
         }
+
+        // TODO: parse message header and send only to appropriate clients
 
         for _, element := range TickerClients {
             element.MessageChannel <- msg_from_stderr
