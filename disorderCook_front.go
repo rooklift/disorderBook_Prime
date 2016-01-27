@@ -193,7 +193,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
     fmt.Fprintf(Books[venue][symbol].stdin, "ORDERBOOK_BINARY\n")
 
     var nextbyte byte
-    var err error
+    // var err error
 
     var qty uint32
     var price uint32
@@ -209,64 +209,26 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
     flag = false
     for {
         qty = 0
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                qty += uint32(nextbyte) << 24
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                qty += uint32(nextbyte) << 16
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                qty += uint32(nextbyte) << 8
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                qty += uint32(nextbyte)
-                break
-            }
-        }
+
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 24
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 16
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 8
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte)
 
         price = 0
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                price += uint32(nextbyte) << 24
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                price += uint32(nextbyte) << 16
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                price += uint32(nextbyte) << 8
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                price += uint32(nextbyte)
-                break
-            }
-        }
+
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 24
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 16
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 8
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte)
 
         if qty != 0 {
             if flag {
@@ -288,64 +250,26 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
     flag = false
     for {
         qty = 0
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                qty += uint32(nextbyte) << 24
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                qty += uint32(nextbyte) << 16
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                qty += uint32(nextbyte) << 8
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                qty += uint32(nextbyte)
-                break
-            }
-        }
+
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 24
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 16
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 8
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte)
 
         price = 0
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                price += uint32(nextbyte) << 24
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                price += uint32(nextbyte) << 16
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                price += uint32(nextbyte) << 8
-                break
-            }
-        }
-        for {
-            nextbyte, err = reader.ReadByte()
-            if err == nil {
-                price += uint32(nextbyte)
-                break
-            }
-        }
+
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 24
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 16
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 8
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte)
 
         if qty != 0 {
             if flag {
