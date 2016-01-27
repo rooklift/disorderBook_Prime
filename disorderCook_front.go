@@ -6,6 +6,7 @@ import (
     "errors"
     "flag"
     "fmt"
+    "github.com/gorilla/websocket"
     "io"
     "io/ioutil"
     "net/http"
@@ -14,22 +15,24 @@ import (
     "strconv"
     "strings"
     "sync"
+    "time"
 )
 
 type PipesStruct struct {
     stdin io.WriteCloser
     stdout io.ReadCloser
+    stderr io.ReadCloser
 }
 
 type OrderStruct struct {
-    Symbol      string       `json:"symbol"`
-    Stock       string       `json:"stock"`
-    Venue       string       `json:"venue"`
-    Direction   string       `json:"direction"`
-    OrderType   string       `json:"orderType"`
-    Account     string       `json:"account"`
-    Qty         int32        `json:"qty"`
-    Price       int32        `json:"price"`
+    Symbol              string       `json:"symbol"`
+    Stock               string       `json:"stock"`
+    Venue               string       `json:"venue"`
+    Direction           string       `json:"direction"`
+    OrderType           string       `json:"orderType"`
+    Account             string       `json:"account"`
+    Qty                 int32        `json:"qty"`
+    Price               int32        `json:"price"`
 }
 
 type OptionsStruct struct {
@@ -40,6 +43,13 @@ type OptionsStruct struct {
     DefaultVenue        string
     DefaultSymbol       string
     Excess              bool
+}
+
+type WsInfo struct {
+    Account             string
+    Venue               string
+    Symbol              string
+    MessageChannel      chan string
 }
 
 const (
@@ -102,6 +112,12 @@ var BookCount = 0
 
 var Options OptionsStruct
 
+var TickerClients = make([]WsInfo, 0)
+var ExecutionClients = make([]WsInfo, 0)
+var ClientLock sync.Mutex
+
+var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize:1024}
+
 // --------------------------------------------------------------------------------------------
 
 func create_book_if_needed (venue string, symbol string) error {
@@ -125,13 +141,14 @@ func create_book_if_needed (venue string, symbol string) error {
         command := exec.Command("./disorderCook.exe", venue, symbol)
         i_pipe, _ := command.StdinPipe()
         o_pipe, _ := command.StdoutPipe()
+        e_pipe, _ := command.StderrPipe()
 
-        // Should maybe handle errors from the above. FIXME
+        // Should maybe handle errors from the above.
 
-        new_pipes_struct := PipesStruct{i_pipe, o_pipe}
+        new_pipes_struct := PipesStruct{i_pipe, o_pipe, e_pipe}
 
         Books[venue][symbol] = &new_pipes_struct
-        Locks[venue][symbol] = new(sync.Mutex)
+        Locks[venue][symbol] = new(sync.Mutex)      // new() returns a pointer
         BookCount++
         command.Start()
     }
@@ -177,6 +194,8 @@ func getresponse (command string, venue string, symbol string) string {
 
 func get_binary_orderbook_to_json (venue string, symbol string) string {
 
+    // See comments in the C code for how the incoming data is formatted
+
     v := Books[venue]
     if v == nil {
         return UNKNOWN_VENUE
@@ -193,8 +212,6 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
     fmt.Fprintf(Books[venue][symbol].stdin, "ORDERBOOK_BINARY\n")
 
     var nextbyte byte
-    // var err error
-
     var qty uint32
     var price uint32
     var commaflag bool
@@ -298,7 +315,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
     return string(output[:])
 }
 
-func handler(writer http.ResponseWriter, request * http.Request) {
+func main_handler(writer http.ResponseWriter, request * http.Request) {
 
     writer.Header().Set("Content-Type", "application/json")     // A few things change this later
 
@@ -639,6 +656,92 @@ func handler(writer http.ResponseWriter, request * http.Request) {
     return
 }
 
+func ws_handler(writer http.ResponseWriter, request * http.Request) {
+
+    // http://www.gorillatoolkit.org/pkg/websocket
+
+    conn, err := Upgrader.Upgrade(writer, request, nil)
+    if err != nil {
+        return
+    }
+
+    path_clean := strings.Trim(request.URL.Path, "\n\r\t /")
+    pathlist := strings.Split(path_clean, "/")
+
+    if len(pathlist) < 3 || pathlist[0] != "ob" || pathlist[1] != "api" || pathlist[2] != "ws" {
+        return
+    }
+
+    var account string
+    var venue string
+    var symbol string
+
+    message_channel := make(chan string, 32)        // Dunno what buffer is appropriate
+
+    //ob/api/ws/:trading_account/venues/:venue/tickertape/stocks/:stock
+    if len(pathlist) == 9 && pathlist[4] == "venues" && pathlist[6] == "tickertape" && pathlist[7] == "stocks" {
+        account = ""
+        venue = pathlist[5]
+        symbol = pathlist[8]
+
+        info := WsInfo{account, venue, symbol, message_channel}
+        TickerClients = append(TickerClients, info)
+
+    //ob/api/ws/:trading_account/venues/:venue/tickertape
+    } else if len(pathlist) == 7 && pathlist[4] == "venues" && pathlist[6] == "tickertape" {
+        account = ""
+        venue = pathlist[5]
+        symbol = ""
+
+        info := WsInfo{account, venue, symbol, message_channel}
+        TickerClients = append(TickerClients, info)
+
+    //ob/api/ws/:trading_account/venues/:venue/executions/stocks/:symbol
+    } else if len(pathlist) == 9 && pathlist[4] == "venues" && pathlist[6] == "executions" && pathlist[7] == "stocks" {
+        account = pathlist[3]
+        venue = pathlist[5]
+        symbol = pathlist[8]
+
+        info := WsInfo{account, venue, symbol, message_channel}
+        ExecutionClients = append(ExecutionClients, info)
+
+    //ob/api/ws/:trading_account/venues/:venue/executions
+    } else if len(pathlist) == 7 && pathlist[4] == "venues" && pathlist[6] == "executions" {
+        account = pathlist[3]
+        venue = pathlist[5]
+        symbol = ""
+
+        info := WsInfo{account, venue, symbol, message_channel}
+        ExecutionClients = append(ExecutionClients, info)
+
+    // invalid URL
+    } else {
+        return
+    }
+
+    // Main loop will read messages from a channel and send them to the client... FIXME
+
+    for {
+        msg := <- message_channel
+        err = conn.WriteMessage(websocket.TextMessage, []byte(msg))
+        if err != nil {
+            return
+        }
+    }
+}
+
+func ws_controller() {
+    for {
+        for _, element := range TickerClients {
+            element.MessageChannel <- "it works"
+        }
+        for _, element := range ExecutionClients {
+            element.MessageChannel <- "it works"
+        }
+        time.Sleep(1000 * time.Millisecond)
+    }
+}
+
 func load_auth() {
     file, err := ioutil.ReadFile(Options.AccountFilename)
     if err == nil {
@@ -684,7 +787,6 @@ func main() {
     create_book_if_needed(Options.DefaultVenue, Options.DefaultSymbol)
 
     fmt.Printf("disorderBook (C+Go version) starting up on port %d\n", Options.Port)
-    serverstring := fmt.Sprintf("127.0.0.1:%d", Options.Port)
 
     if Options.AccountFilename != "" {
         load_auth()
@@ -693,6 +795,16 @@ func main() {
         fmt.Printf("\n -----> Warning: running WITHOUT AUTHENTICATION! <-----\n")
     }
 
-    http.HandleFunc("/", handler)
-    http.ListenAndServe(serverstring, nil)
+    main_server_string := fmt.Sprintf("127.0.0.1:%d", Options.Port)
+    server_mux_main := http.NewServeMux()
+    server_mux_main.HandleFunc("/", main_handler)
+    go func(){http.ListenAndServe(main_server_string, server_mux_main)}()
+
+    go ws_controller()
+
+    ws_server_string := fmt.Sprintf("127.0.0.1:%d", Options.WsPort)
+    server_mux_ws := http.NewServeMux()
+    server_mux_ws.HandleFunc("/", ws_handler)
+    http.ListenAndServe(ws_server_string, server_mux_ws)
+
 }
