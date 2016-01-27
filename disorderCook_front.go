@@ -6,7 +6,7 @@ import (
     "errors"
     "flag"
     "fmt"
-    "github.com/gorilla/websocket"
+    "github.com/gorilla/websocket"      // go get github.com/gorilla/websocket
     "io"
     "io/ioutil"
     "net/http"
