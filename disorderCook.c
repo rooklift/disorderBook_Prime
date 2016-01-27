@@ -170,10 +170,10 @@ DEBUG_INFO DebugInfo = {0};         // Think global is auto-zeroed anyway, but w
 // ------------------------------------------------------------------------------------------
 
 
-void end_message (void)
+void end_message (FILE * outfile)
 {
-    printf("\nEND\n");
-    fflush(stdout);
+    fprintf(outfile, "\nEND\n");
+    fflush(outfile);
     return;
 }
 
@@ -183,7 +183,7 @@ void check_ptr_or_quit (void * ptr)
     if (ptr == NULL)
     {
         printf("{\"ok\": false, \"error\": \"Out of memory! Quitting\"}");
-        end_message();
+        end_message(stdout);
         assert(ptr);
     }
     return;
@@ -546,6 +546,9 @@ void run_order (ORDER * order)
             }
         }
     }
+
+    fprintf(stderr, "Insert useful WebSocket message here.\n");
+    end_message(stderr);
 
     return;
 }
@@ -1595,7 +1598,7 @@ int main (int argc, char ** argv)
         if (eofcheck == NULL)           // i.e. we HAVE reached EOF
         {
             printf("{\"ok\": false, \"error\": \"Unexpected EOF on stdin. Quitting.\"}");
-            end_message();
+            end_message(stdout);
             return 1;
         }
 
@@ -1627,14 +1630,14 @@ int main (int argc, char ** argv)
             }
             free(o_and_e);
 
-            end_message();
+            end_message(stdout);
             continue;
         }
 
         if (strcmp("ORDERBOOK", tokens[0]) == 0)
         {
             print_orderbook();
-            end_message();
+            end_message(stdout);
             continue;
         }
 
@@ -1656,7 +1659,7 @@ int main (int argc, char ** argv)
                 print_order(AllOrders[id]);
             }
 
-            end_message();
+            end_message(stdout);
             continue;
         }
 
@@ -1673,7 +1676,7 @@ int main (int argc, char ** argv)
                 print_all_orders_of_account(AllAccounts[id]);
             }
 
-            end_message();
+            end_message(stdout);
             continue;
         }
 
@@ -1689,14 +1692,14 @@ int main (int argc, char ** argv)
                 print_order(AllOrders[id]);
             }
 
-            end_message();
+            end_message(stdout);
             continue;
         }
 
         if (strcmp("QUOTE", tokens[0]) == 0)
         {
             print_quote();
-            end_message();
+            end_message(stdout);
             continue;
         }
 
@@ -1711,33 +1714,33 @@ int main (int argc, char ** argv)
                 printf("OK %s", AllOrders[id]->account->name);
             }
 
-            end_message();
+            end_message(stdout);
             continue;
         }
 
         if (strcmp("__DEBUG_MEMORY__", tokens[0]) == 0)
         {
             print_memory_info();
-            end_message();
+            end_message(stdout);
             continue;
         }
 
         if (strcmp("__TIMESTAMP__", tokens[0]) == 0)
         {
             print_timestamp();
-            end_message();
+            end_message(stdout);
             continue;
         }
 
         if (strcmp("__SCORES__", tokens[0]) == 0)
         {
             print_scores();
-            end_message();
+            end_message(stdout);
             continue;
         }
 
         printf("{\"ok\": false, \"error\": \"Did not comprehend\"}");
-        end_message();
+        end_message(stdout);
         continue;
     }
 

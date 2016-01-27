@@ -15,7 +15,6 @@ import (
     "strconv"
     "strings"
     "sync"
-    "time"
 )
 
 type PipesStruct struct {
@@ -151,6 +150,7 @@ func create_book_if_needed (venue string, symbol string) error {
         Locks[venue][symbol] = new(sync.Mutex)      // new() returns a pointer
         BookCount++
         command.Start()
+        go ws_controller(venue, symbol)
     }
     return nil
 }
@@ -719,8 +719,6 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         return
     }
 
-    // Main loop will read messages from a channel and send them to the client... FIXME
-
     for {
         msg := <- message_channel
         err = conn.WriteMessage(websocket.TextMessage, []byte(msg))
@@ -730,15 +728,29 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
     }
 }
 
-func ws_controller() {
+func ws_controller(venue string, symbol string) {
+
+    reader := bufio.NewReader(Books[venue][symbol].stderr)
+
     for {
+        msg_from_stderr := ""
+        for {
+            nextpiece, _, _ := reader.ReadLine()
+            str_piece := strings.Trim(string(nextpiece), "\n\r")
+            if str_piece != "END" {
+                msg_from_stderr += str_piece + "\n"
+            } else {
+                break
+            }
+        }
+
         for _, element := range TickerClients {
-            element.MessageChannel <- "it works"
+            element.MessageChannel <- msg_from_stderr
         }
+
         for _, element := range ExecutionClients {
-            element.MessageChannel <- "it works"
+            element.MessageChannel <- msg_from_stderr
         }
-        time.Sleep(1000 * time.Millisecond)
     }
 }
 
@@ -799,8 +811,6 @@ func main() {
     server_mux_main := http.NewServeMux()
     server_mux_main.HandleFunc("/", main_handler)
     go func(){http.ListenAndServe(main_server_string, server_mux_main)}()
-
-    go ws_controller()
 
     ws_server_string := fmt.Sprintf("127.0.0.1:%d", Options.WsPort)
     server_mux_ws := http.NewServeMux()
