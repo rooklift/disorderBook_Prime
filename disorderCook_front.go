@@ -288,7 +288,12 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
 
     Locks[venue][symbol].Unlock()
 
-    output = append(output, `], "ts": "FIXME"}`...)
+    ts := getresponse("__TIMESTAMP__", venue, symbol)
+    ts = strings.Trim(ts, "\n\r\t ")
+
+    output = append(output, `], "ts": "`...)
+    output = append(output, ts...)
+    output = append(output, `"}`...)
 
     return string(output[:])
 }

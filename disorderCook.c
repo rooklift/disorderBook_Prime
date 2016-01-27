@@ -1530,6 +1530,16 @@ void print_scores (void)
 }
 
 
+void print_timestamp (void)
+{
+    char * ts;
+    ts = new_timestamp();
+    printf("%s", ts);
+    free(ts);
+    return;
+}
+
+
 void print_memory_info (void)
 {
     printf( "DebugInfo.inits_of_level: %d,\n"               // The compiler auto-concatenates these things
@@ -1708,6 +1718,13 @@ int main (int argc, char ** argv)
         if (strcmp("__DEBUG_MEMORY__", tokens[0]) == 0)
         {
             print_memory_info();
+            end_message();
+            continue;
+        }
+
+        if (strcmp("__TIMESTAMP__", tokens[0]) == 0)
+        {
+            print_timestamp();
             end_message();
             continue;
         }
