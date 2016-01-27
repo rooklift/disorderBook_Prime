@@ -197,7 +197,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
 
     var qty uint32
     var price uint32
-    var flag bool
+    var commaflag bool
 
     output := make([]byte, 0, 1024)
     output = append(output, `{"ok": true, "venue": "`...)
@@ -206,7 +206,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
     output = append(output, symbol...)
     output = append(output, `", "bids": [`...)
 
-    flag = false
+    commaflag = false
     for {
         qty = 0
 
@@ -231,7 +231,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
         price += uint32(nextbyte)
 
         if qty != 0 {
-            if flag {
+            if commaflag {
                 output = append(output, `, `...)
             }
             output = append(output, `{"price": `...)
@@ -239,7 +239,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
             output = append(output, `, "qty": `...)
             output = append(output, strconv.FormatUint(uint64(qty), 10)...)
             output = append(output, `, "isBuy": true}`...)
-            flag = true
+            commaflag = true
         } else {
             break
         }
@@ -247,7 +247,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
 
     output = append(output, `], "asks": [`...)
 
-    flag = false
+    commaflag = false
     for {
         qty = 0
 
@@ -272,7 +272,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
         price += uint32(nextbyte)
 
         if qty != 0 {
-            if flag {
+            if commaflag {
                 output = append(output, `, `...)
             }
             output = append(output, `{"price": `...)
@@ -280,7 +280,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
             output = append(output, `, "qty": `...)
             output = append(output, strconv.FormatUint(uint64(qty), 10)...)
             output = append(output, `, "isBuy": false}`...)
-            flag = true
+            commaflag = true
         } else {
             break
         }
@@ -335,14 +335,14 @@ func handler(writer http.ResponseWriter, request * http.Request) {
         if pathlist[2] == "venues" {
             fmt.Fprintf(writer, `{"ok": true, "venues": [`)
             name := ""
-            flag := false
+            commaflag := false
             for v := range Books {
                 name = v + " Exchange"
-                if flag {
+                if commaflag {
                     fmt.Fprintf(writer, ", ")
                 }
                 fmt.Fprintf(writer, `{"name": "%s", "state": "open", "venue": "%s"}`, name, v)
-                flag = true
+                commaflag = true
             }
             fmt.Fprintf(writer, "]}")
             return
@@ -387,14 +387,14 @@ func handler(writer http.ResponseWriter, request * http.Request) {
 
         fmt.Fprintf(writer, `{"ok": true, "symbols": [`)
         name := ""
-        flag := false
+        commaflag := false
         for s := range Books[venue] {
             name = s + " Inc"
-            if flag {
+            if commaflag {
                 fmt.Fprintf(writer, ", ")
             }
             fmt.Fprintf(writer, `{"name": "%s", "symbol": "%s"}`, name, s)
-            flag = true
+            commaflag = true
         }
         fmt.Fprintf(writer, "]}")
         return
