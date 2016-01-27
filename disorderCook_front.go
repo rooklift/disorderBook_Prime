@@ -279,7 +279,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
             output = append(output, strconv.FormatUint(uint64(price), 10)...)
             output = append(output, `, "qty": `...)
             output = append(output, strconv.FormatUint(uint64(qty), 10)...)
-            output = append(output, `, "isBuy": true}`...)
+            output = append(output, `, "isBuy": false}`...)
             flag = true
         } else {
             break
