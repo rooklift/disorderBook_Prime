@@ -759,6 +759,10 @@ func ws_controller(venue string, symbol string) {
     reader := bufio.NewReader(Books[venue][symbol].stderr)
 
     for {
+        raw_headers, _, _ := reader.ReadLine()
+        str_header := strings.Trim(string(raw_headers), "\n\r\t /")
+        headers := strings.Split(str_header, " ")
+
         msg_from_stderr := ""
         for {
             nextpiece, _, _ := reader.ReadLine()
@@ -772,16 +776,20 @@ func ws_controller(venue string, symbol string) {
 
         ClientListLock.Lock()
 
-        for _, client := range TickerClients {
-            if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
-                client.MessageChannel <- msg_from_stderr
+        if headers[0] == "TICKER" {
+            for _, client := range TickerClients {
+                if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
+                    client.MessageChannel <- msg_from_stderr
+                }
             }
         }
 
-        // TODO: parse execution message and send only to appropriate clients
-
-        for _, client := range ExecutionClients {
-            client.MessageChannel <- msg_from_stderr
+        if headers[0] == "EXECUTION" {
+            for _, client := range ExecutionClients {
+                if client.Account == headers[1] && client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
+                    client.MessageChannel <- msg_from_stderr
+                }
+            }
         }
 
         ClientListLock.Unlock()

@@ -71,6 +71,24 @@
 #define TOO_HIGH_ACCOUNT 3
 
 
+#define EXECUTION_TEMPLATE_1 "{{\
+  \"ok\": true,\
+  \"account\": \"%s\",\
+  \"venue\": \"%s\",\
+  \"symbol\": \"%s\",\
+  \"order\": "
+
+#define EXECUTION_TEMPLATE_2 ",\
+  \"standingId\": %d,\
+  \"incomingId\": %d,\
+  \"price\": %d,\
+  \"filled\": %d,\
+  \"filledAt\": \"%s\",\
+  \"standingComplete\": %s,\
+  \"incomingComplete\": %s\
+}}"
+
+
 typedef struct Fill_struct {
     int price;
     int qty;
@@ -126,8 +144,6 @@ typedef struct OrderPtrAndError_struct {
     int error;
 } ORDER_AND_ERROR;
 
-
-
 typedef struct DebugInfo_struct {
     int inits_of_level;
     int inits_of_fill;
@@ -140,7 +156,6 @@ typedef struct DebugInfo_struct {
     int reallocs_of_global_account_list;
     int reallocs_of_account_order_list;
 } DEBUG_INFO;
-
 
 
 // ---------------------------------- GLOBALS -----------------------------------------------
@@ -497,11 +512,92 @@ void print_quote (FILE * outfile)
 }
 
 
+void print_fills (FILE * outfile, ORDER * order)
+{
+    FILLNODE * fillnode;
+
+    if (order->firstfillnode == NULL)   // Can do without this block but it's uglier
+    {
+        fprintf(outfile, "\"fills\": []");
+        return;
+    }
+
+    fprintf(outfile, "\"fills\": [\n");
+
+    fillnode = order->firstfillnode;
+
+    while (fillnode != NULL)
+    {
+        if (fillnode != order->firstfillnode) fprintf(outfile, ",\n");
+        fprintf(outfile, "{\"price\": %d, \"qty\": %d, \"ts\": \"%s\"}", fillnode->fill->price, fillnode->fill->qty, fillnode->fill->ts);
+        fillnode = fillnode->next;
+    }
+
+    fprintf(outfile, "\n]");
+    return;
+}
+
+
+void print_order (FILE * outfile, ORDER * order)
+{
+    char orderType_to_print[SMALLSTRING];
+
+    if (order->orderType == LIMIT)
+    {
+        safe_strcpy(orderType_to_print, "limit", SMALLSTRING);
+    } else if (order->orderType == MARKET) {
+        safe_strcpy(orderType_to_print, "market", SMALLSTRING);
+    } else if (order->orderType == IOC) {
+        safe_strcpy(orderType_to_print, "immediate-or-cancel", SMALLSTRING);
+    } else if (order->orderType == FOK) {
+        safe_strcpy(orderType_to_print, "fill-or-kill", SMALLSTRING);
+    } else {
+        safe_strcpy(orderType_to_print, "unknown", SMALLSTRING);
+    }
+
+    fprintf(outfile,
+
+            "{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, "
+            "\"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
+
+            Venue, Symbol, order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty,
+            order->price, orderType_to_print, order->id, order->account->name, order->ts, order->totalFilled, order->open ? "true" : "false");
+
+    print_fills(outfile, order);
+    fprintf(outfile, "}");
+
+    return;
+}
+
+
 void create_ticker_message (void)
 {
+    fprintf(stderr, "TICKER %s %s %s\n", "NONE", Venue, Symbol);
+
     fprintf(stderr, "{\"ok\": true, \"quote\": ");
     print_quote(stderr);
     fprintf(stderr, "}");
+
+    end_message(stderr);
+    return;
+}
+
+
+void create_execution_messages(ORDER * standing, ORDER * incoming, int quantity, int price, char * ts)
+{
+    fprintf(stderr, "EXECUTION %s %s %s\n", standing->account, Venue, Symbol);
+    fprintf(stderr, EXECUTION_TEMPLATE_1, standing->account, Venue, Symbol);
+    print_order(stderr, standing);
+    fprintf(stderr, EXECUTION_TEMPLATE_2, standing->id, incoming->id, price, quantity, ts,
+            standing->open ? "false" : "true", incoming->open ? "false" : "true");
+            
+    end_message(stderr);
+
+    fprintf(stderr, "EXECUTION %s %s %s\n", incoming->account, Venue, Symbol);
+    fprintf(stderr, EXECUTION_TEMPLATE_1, incoming->account, Venue, Symbol);
+    print_order(stderr, incoming);
+    fprintf(stderr, EXECUTION_TEMPLATE_2, standing->id, incoming->id, price, quantity, ts,
+            standing->open ? "false" : "true", incoming->open ? "false" : "true");
 
     end_message(stderr);
     return;
@@ -579,6 +675,8 @@ void cross (ORDER * standing, ORDER * incoming)
         update_account(standing->account, quantity, price, SELL);
         update_account(incoming->account, quantity, price, BUY);
     }
+
+    create_execution_messages(standing, incoming, quantity, price, ts);
 
     return;
 }
@@ -1081,64 +1179,6 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
 
     o_and_e->order = order;
     return o_and_e;
-}
-
-
-void print_fills (FILE * outfile, ORDER * order)
-{
-    FILLNODE * fillnode;
-
-    if (order->firstfillnode == NULL)   // Can do without this block but it's uglier
-    {
-        fprintf(outfile, "\"fills\": []");
-        return;
-    }
-
-    fprintf(outfile, "\"fills\": [\n");
-
-    fillnode = order->firstfillnode;
-
-    while (fillnode != NULL)
-    {
-        if (fillnode != order->firstfillnode) fprintf(outfile, ",\n");
-        fprintf(outfile, "{\"price\": %d, \"qty\": %d, \"ts\": \"%s\"}", fillnode->fill->price, fillnode->fill->qty, fillnode->fill->ts);
-        fillnode = fillnode->next;
-    }
-
-    fprintf(outfile, "\n]");
-    return;
-}
-
-
-void print_order (FILE * outfile, ORDER * order)
-{
-    char orderType_to_print[SMALLSTRING];
-
-    if (order->orderType == LIMIT)
-    {
-        safe_strcpy(orderType_to_print, "limit", SMALLSTRING);
-    } else if (order->orderType == MARKET) {
-        safe_strcpy(orderType_to_print, "market", SMALLSTRING);
-    } else if (order->orderType == IOC) {
-        safe_strcpy(orderType_to_print, "immediate-or-cancel", SMALLSTRING);
-    } else if (order->orderType == FOK) {
-        safe_strcpy(orderType_to_print, "fill-or-kill", SMALLSTRING);
-    } else {
-        safe_strcpy(orderType_to_print, "unknown", SMALLSTRING);
-    }
-
-    fprintf(outfile,
-
-            "{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, "
-            "\"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
-
-            Venue, Symbol, order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty,
-            order->price, orderType_to_print, order->id, order->account->name, order->ts, order->totalFilled, order->open ? "true" : "false");
-
-    print_fills(outfile, order);
-    fprintf(outfile, "}");
-
-    return;
 }
 
 
