@@ -697,7 +697,10 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         symbol = pathlist[8]
 
         info := WsInfo{account, venue, symbol, message_channel}
+
+        ClientLock.Lock()
         TickerClients = append(TickerClients, info)
+        ClientLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/tickertape
     } else if len(pathlist) == 7 && pathlist[4] == "venues" && pathlist[6] == "tickertape" {
@@ -706,7 +709,10 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         symbol = ""
 
         info := WsInfo{account, venue, symbol, message_channel}
+
+        ClientLock.Lock()
         TickerClients = append(TickerClients, info)
+        ClientLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/executions/stocks/:symbol
     } else if len(pathlist) == 9 && pathlist[4] == "venues" && pathlist[6] == "executions" && pathlist[7] == "stocks" {
@@ -715,7 +721,10 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         symbol = pathlist[8]
 
         info := WsInfo{account, venue, symbol, message_channel}
+
+        ClientLock.Lock()
         ExecutionClients = append(ExecutionClients, info)
+        ClientLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/executions
     } else if len(pathlist) == 7 && pathlist[4] == "venues" && pathlist[6] == "executions" {
@@ -724,7 +733,10 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         symbol = ""
 
         info := WsInfo{account, venue, symbol, message_channel}
+
+        ClientLock.Lock()
         ExecutionClients = append(ExecutionClients, info)
+        ClientLock.Unlock()
 
     // invalid URL
     } else {
@@ -760,6 +772,8 @@ func ws_controller(venue string, symbol string) {
 
         // TODO: parse message header and send only to appropriate clients
 
+        ClientLock.Lock()
+
         for _, element := range TickerClients {
             element.MessageChannel <- msg_from_stderr
         }
@@ -767,6 +781,8 @@ func ws_controller(venue string, symbol string) {
         for _, element := range ExecutionClients {
             element.MessageChannel <- msg_from_stderr
         }
+
+        ClientLock.Unlock()
     }
 }
 
