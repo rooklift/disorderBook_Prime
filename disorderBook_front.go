@@ -745,6 +745,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
     // invalid URL
     } else {
+        conn.Close()
         return
     }
 
