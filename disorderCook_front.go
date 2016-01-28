@@ -791,9 +791,11 @@ func ws_controller(venue string, symbol string) {
         if headers[0] == "TICKER" {
             for _, client := range TickerClients {
                 if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
-                    select {
-                        case client.MessageChannel <- msg_from_stderr :         // Send message unless buffer is full
-                        default:
+                    if client.StillAlive {
+                        select {
+                            case client.MessageChannel <- msg_from_stderr :         // Send message unless buffer is full
+                            default:
+                        }
                     }
                 }
             }
