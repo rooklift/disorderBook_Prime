@@ -185,7 +185,7 @@ func get_response (command string, venue string, symbol string) string {
         str_piece := strings.Trim(string(nextpiece), "\n\r")
         if str_piece != "END" {
             buffer.WriteString(str_piece)
-            buffer.WriteString("\n")
+            buffer.WriteByte('\n')
         } else {
             break
         }
@@ -785,7 +785,7 @@ func ws_controller(venue string, symbol string) {
             str_piece := strings.Trim(string(nextpiece), "\n\r")
             if str_piece != "END" {
                 buffer.WriteString(str_piece)
-                buffer.WriteString("\n")
+                buffer.WriteByte('\n')
             } else {
                 break
             }
