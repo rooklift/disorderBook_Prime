@@ -49,6 +49,7 @@ type WsInfo struct {
     Venue               string
     Symbol              string
     MessageChannel      chan string
+    StillAlive          bool
 }
 
 const (
@@ -687,6 +688,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
     var account string
     var venue string
     var symbol string
+    var info WsInfo
 
     message_channel := make(chan string, 32)        // Dunno what buffer is appropriate
 
@@ -696,7 +698,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         venue = pathlist[5]
         symbol = pathlist[8]
 
-        info := WsInfo{account, venue, symbol, message_channel}
+        info = WsInfo{account, venue, symbol, message_channel, true}
 
         ClientListLock.Lock()
         TickerClients = append(TickerClients, info)
@@ -708,7 +710,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         venue = pathlist[5]
         symbol = ""
 
-        info := WsInfo{account, venue, symbol, message_channel}
+        info = WsInfo{account, venue, symbol, message_channel, true}
 
         ClientListLock.Lock()
         TickerClients = append(TickerClients, info)
@@ -720,7 +722,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         venue = pathlist[5]
         symbol = pathlist[8]
 
-        info := WsInfo{account, venue, symbol, message_channel}
+        info = WsInfo{account, venue, symbol, message_channel, true}
 
         ClientListLock.Lock()
         ExecutionClients = append(ExecutionClients, info)
@@ -732,7 +734,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         venue = pathlist[5]
         symbol = ""
 
-        info := WsInfo{account, venue, symbol, message_channel}
+        info = WsInfo{account, venue, symbol, message_channel, true}
 
         ClientListLock.Lock()
         ExecutionClients = append(ExecutionClients, info)
@@ -742,6 +744,8 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
     } else {
         return
     }
+
+    // go ws_null_reader(conn, &info.StillAlive)     // This handles reading and discarding incoming messages
 
     for {
         msg := <- message_channel
@@ -779,7 +783,9 @@ func ws_controller(venue string, symbol string) {
         if headers[0] == "TICKER" {
             for _, client := range TickerClients {
                 if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
-                    client.MessageChannel <- msg_from_stderr
+                    if client.StillAlive {
+                        client.MessageChannel <- msg_from_stderr
+                    }
                 }
             }
         }
@@ -787,12 +793,30 @@ func ws_controller(venue string, symbol string) {
         if headers[0] == "EXECUTION" {
             for _, client := range ExecutionClients {
                 if client.Account == headers[1] && client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
-                    client.MessageChannel <- msg_from_stderr
+                    if client.StillAlive {
+                        client.MessageChannel <- msg_from_stderr
+                    }
                 }
             }
         }
 
         ClientListLock.Unlock()
+    }
+}
+
+// Apparently reading WebSocket messages from clients is mandatory...
+
+func ws_null_reader(conn * websocket.Conn, alive_flag * bool) {
+    for {
+        if _, _, err := conn.NextReader(); err != nil {
+
+            ClientListLock.Lock()
+            *alive_flag = false
+            ClientListLock.Unlock()
+
+            conn.Close()
+            return
+        }
     }
 }
 
