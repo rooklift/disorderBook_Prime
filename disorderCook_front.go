@@ -690,7 +690,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
     var symbol string
     var info WsInfo
 
-    message_channel := make(chan string, 32)        // Dunno what buffer is appropriate
+    message_channel := make(chan string, 128)        // Dunno what buffer is appropriate
 
     //ob/api/ws/:trading_account/venues/:venue/tickertape/stocks/:stock
     if len(pathlist) == 9 && pathlist[4] == "venues" && pathlist[6] == "tickertape" && pathlist[7] == "stocks" {
@@ -751,6 +751,9 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         msg := <- message_channel
         err = conn.WriteMessage(websocket.TextMessage, []byte(msg))
         if err != nil {
+
+            // An unlikely but conceivable race could occur here if the controller sends loads of messages
+            // to us at exactly this point: we will quit and therefore the channel will stall.
 
             ClientListLock.Lock()
             info.StillAlive = false
