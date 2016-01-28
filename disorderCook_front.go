@@ -113,7 +113,7 @@ var Options OptionsStruct
 
 var TickerClients = make([]WsInfo, 0)
 var ExecutionClients = make([]WsInfo, 0)
-var ClientLock sync.Mutex
+var ClientListLock sync.Mutex
 
 var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize:1024}
 
@@ -698,9 +698,9 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
         info := WsInfo{account, venue, symbol, message_channel}
 
-        ClientLock.Lock()
+        ClientListLock.Lock()
         TickerClients = append(TickerClients, info)
-        ClientLock.Unlock()
+        ClientListLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/tickertape
     } else if len(pathlist) == 7 && pathlist[4] == "venues" && pathlist[6] == "tickertape" {
@@ -710,9 +710,9 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
         info := WsInfo{account, venue, symbol, message_channel}
 
-        ClientLock.Lock()
+        ClientListLock.Lock()
         TickerClients = append(TickerClients, info)
-        ClientLock.Unlock()
+        ClientListLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/executions/stocks/:symbol
     } else if len(pathlist) == 9 && pathlist[4] == "venues" && pathlist[6] == "executions" && pathlist[7] == "stocks" {
@@ -722,9 +722,9 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
         info := WsInfo{account, venue, symbol, message_channel}
 
-        ClientLock.Lock()
+        ClientListLock.Lock()
         ExecutionClients = append(ExecutionClients, info)
-        ClientLock.Unlock()
+        ClientListLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/executions
     } else if len(pathlist) == 7 && pathlist[4] == "venues" && pathlist[6] == "executions" {
@@ -734,9 +734,9 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
         info := WsInfo{account, venue, symbol, message_channel}
 
-        ClientLock.Lock()
+        ClientListLock.Lock()
         ExecutionClients = append(ExecutionClients, info)
-        ClientLock.Unlock()
+        ClientListLock.Unlock()
 
     // invalid URL
     } else {
@@ -770,19 +770,21 @@ func ws_controller(venue string, symbol string) {
             }
         }
 
-        // TODO: parse message header and send only to appropriate clients
+        ClientListLock.Lock()
 
-        ClientLock.Lock()
-
-        for _, element := range TickerClients {
-            element.MessageChannel <- msg_from_stderr
+        for _, client := range TickerClients {
+            if client.Venue == venue {
+                client.MessageChannel <- msg_from_stderr
+            }
         }
 
-        for _, element := range ExecutionClients {
-            element.MessageChannel <- msg_from_stderr
+        // TODO: parse execution message and send only to appropriate clients
+
+        for _, client := range ExecutionClients {
+            client.MessageChannel <- msg_from_stderr
         }
 
-        ClientLock.Unlock()
+        ClientListLock.Unlock()
     }
 }
 

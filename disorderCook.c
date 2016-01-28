@@ -441,6 +441,73 @@ void update_account (ACCOUNT * account, int quantity, int price, int direction)
 }
 
 
+void print_quote (FILE * outfile)
+{
+    // Quotes are currently hideously inefficient, generated from scratch each time. Could FIXME.
+
+    int bidSize;
+    int bidDepth;
+    int askSize;
+    int askDepth;
+    int bid;
+    int ask;
+    char * ts;
+    char buildup[MAXSTRING];
+    char part[MAXSTRING];
+
+    bidSize = get_size_from_level(FirstBidLevel);
+    bidDepth = get_depth(FirstBidLevel);
+    askSize = get_size_from_level(FirstAskLevel);
+    askDepth = get_depth(FirstAskLevel);
+
+    ts = new_timestamp();
+
+    // Add all the fields that are always present...
+    snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %d, "
+                                 "\"askSize\": %d, \"bidDepth\": %d, \"askDepth\": %d, \"quoteTime\": \"%s\"",
+             Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
+
+    free(ts);
+
+    if (FirstBidLevel)
+    {
+        bid = FirstBidLevel->price;
+        snprintf(part, MAXSTRING, ", \"bid\": %d", bid);
+        strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
+    }
+
+    if (FirstAskLevel)
+    {
+        ask = FirstAskLevel->price;
+        snprintf(part, MAXSTRING, ", \"ask\": %d", ask);
+        strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
+    }
+
+    if (LastTradeTime)
+    {
+        snprintf(part, MAXSTRING, ", \"lastTrade\": \"%s\", \"lastSize\": %d, \"last\": %d", LastTradeTime, LastSize, LastPrice);
+        strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
+    }
+
+    strncat(buildup, "}", MAXSTRING - strlen(buildup) - 1);
+
+    fprintf(outfile, "%s", buildup);
+
+    return;
+}
+
+
+void create_ticker_message (void)
+{
+    fprintf(stderr, "{\"ok\": true, \"quote\": ");
+    print_quote(stderr);
+    fprintf(stderr, "}");
+
+    end_message(stderr);
+    return;
+}
+
+
 void cross (ORDER * standing, ORDER * incoming)
 {
     int quantity;
@@ -546,9 +613,6 @@ void run_order (ORDER * order)
             }
         }
     }
-
-    fprintf(stderr, "Insert useful WebSocket message here.\n");
-    end_message(stderr);
 
     return;
 }
@@ -1011,38 +1075,42 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
         }
     }
 
+    // Generate a WebSocket ticker message...
+
+    create_ticker_message();
+
     o_and_e->order = order;
     return o_and_e;
 }
 
 
-void print_fills (ORDER * order)
+void print_fills (FILE * outfile, ORDER * order)
 {
     FILLNODE * fillnode;
 
     if (order->firstfillnode == NULL)   // Can do without this block but it's uglier
     {
-        printf("\"fills\": []");
+        fprintf(outfile, "\"fills\": []");
         return;
     }
 
-    printf("\"fills\": [\n");
+    fprintf(outfile, "\"fills\": [\n");
 
     fillnode = order->firstfillnode;
 
     while (fillnode != NULL)
     {
-        if (fillnode != order->firstfillnode) printf(",\n");
-        printf("{\"price\": %d, \"qty\": %d, \"ts\": \"%s\"}", fillnode->fill->price, fillnode->fill->qty, fillnode->fill->ts);
+        if (fillnode != order->firstfillnode) fprintf(outfile, ",\n");
+        fprintf(outfile, "{\"price\": %d, \"qty\": %d, \"ts\": \"%s\"}", fillnode->fill->price, fillnode->fill->qty, fillnode->fill->ts);
         fillnode = fillnode->next;
     }
 
-    printf("\n]");
+    fprintf(outfile, "\n]");
     return;
 }
 
 
-void print_order (ORDER * order)
+void print_order (FILE * outfile, ORDER * order)
 {
     char orderType_to_print[SMALLSTRING];
 
@@ -1059,13 +1127,16 @@ void print_order (ORDER * order)
         safe_strcpy(orderType_to_print, "unknown", SMALLSTRING);
     }
 
-    printf( "{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, "
-            "\"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
-            Venue, Symbol, order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty, order->price, orderType_to_print,
-            order->id, order->account->name, order->ts, order->totalFilled, order->open ? "true" : "false");
+    fprintf(outfile,
 
-    print_fills(order);
-    printf("}");
+            "{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, "
+            "\"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
+
+            Venue, Symbol, order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty,
+            order->price, orderType_to_print, order->id, order->account->name, order->ts, order->totalFilled, order->open ? "true" : "false");
+
+    print_fills(outfile, order);
+    fprintf(outfile, "}");
 
     return;
 }
@@ -1363,7 +1434,7 @@ void print_all_orders_of_account (ACCOUNT * account)
     for (n = 0; n < account->count; n++)
     {
         if (flag) printf(", \n");
-        print_order(account->orders[n]);
+        print_order(stdout, account->orders[n]);
         flag = 1;
     }
 
@@ -1405,62 +1476,7 @@ void cancel_order_by_id (int id)
         cleanup_after_cancel(ordernode, level);   // Frees the node and even the level if needed; fixes links
     }
 
-    return;
-}
-
-
-void print_quote (void)
-{
-    // Quotes are currently hideously inefficient, generated from scratch each time. Could FIXME.
-
-    int bidSize;
-    int bidDepth;
-    int askSize;
-    int askDepth;
-    int bid;
-    int ask;
-    char * ts;
-    char buildup[MAXSTRING];
-    char part[MAXSTRING];
-
-    bidSize = get_size_from_level(FirstBidLevel);
-    bidDepth = get_depth(FirstBidLevel);
-    askSize = get_size_from_level(FirstAskLevel);
-    askDepth = get_depth(FirstAskLevel);
-
-    ts = new_timestamp();
-
-    // Add all the fields that are always present...
-    snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %d, "
-                                 "\"askSize\": %d, \"bidDepth\": %d, \"askDepth\": %d, \"quoteTime\": \"%s\"",
-             Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
-
-    free(ts);
-
-    if (FirstBidLevel)
-    {
-        bid = FirstBidLevel->price;
-        snprintf(part, MAXSTRING, ", \"bid\": %d", bid);
-        strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
-    }
-
-    if (FirstAskLevel)
-    {
-        ask = FirstAskLevel->price;
-        snprintf(part, MAXSTRING, ", \"ask\": %d", ask);
-        strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
-    }
-
-    if (LastTradeTime)
-    {
-        snprintf(part, MAXSTRING, ", \"lastTrade\": \"%s\", \"lastSize\": %d, \"last\": %d", LastTradeTime, LastSize, LastPrice);
-        strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
-    }
-
-    strncat(buildup, "}", MAXSTRING - strlen(buildup) - 1);
-
-    printf("%s", buildup);
-
+    create_ticker_message();
     return;
 }
 
@@ -1626,7 +1642,7 @@ int main (int argc, char ** argv)
             {
                 printf("{\"ok\": false, \"error\": \"Backend error %d\"}", o_and_e->error);
             } else {
-                print_order(o_and_e->order);
+                print_order(stdout, o_and_e->order);
             }
             free(o_and_e);
 
@@ -1656,7 +1672,7 @@ int main (int argc, char ** argv)
             {
                 printf("{\"ok\": false, \"error\": \"No such ID\"}");
             } else {
-                print_order(AllOrders[id]);
+                print_order(stdout, AllOrders[id]);
             }
 
             end_message(stdout);
@@ -1689,7 +1705,7 @@ int main (int argc, char ** argv)
                 printf("{\"ok\": false, \"error\": \"No such ID\"}");
             } else {
                 cancel_order_by_id(id);
-                print_order(AllOrders[id]);
+                print_order(stdout, AllOrders[id]);
             }
 
             end_message(stdout);
@@ -1698,7 +1714,7 @@ int main (int argc, char ** argv)
 
         if (strcmp("QUOTE", tokens[0]) == 0)
         {
-            print_quote();
+            print_quote(stdout);
             end_message(stdout);
             continue;
         }
