@@ -8,7 +8,7 @@
 * Compile `disorderCook.c` and name the executable `disorderCook.exe`
 * Compile `disorderCook_front.go` and run it
 * Connect your trading bots to &nbsp; **http://127.0.0.1:8000/ob/api/** &nbsp; instead of the normal URL
-* WebSockets are at &nbsp; **ws://127.0.0.1:8001/ob/api/ws/**
+* WebSockets are currently bugged, give me a day
 * Don't use https or wss
 
 ## Features
