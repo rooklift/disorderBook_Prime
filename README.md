@@ -1,7 +1,7 @@
 # disorderBook Prime
 
 * This is a rewrite of my **[Stockfighter](http://stockfighter.io)** server **[disorderBook](https://github.com/fohristiwhirl/disorderBook)**, using C for the backend
-* For the frontend, there is a choice of Python or Go implementations
+* The frontend is now written in Go
 
 ## Usage
 
