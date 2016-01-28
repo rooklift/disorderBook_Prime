@@ -175,14 +175,14 @@ func get_response (command string, venue string, symbol string) string {
 
     Locks[venue][symbol].Lock()
 
-    reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, command)
 
+    scanner := bufio.NewScanner(Books[venue][symbol].stdout)
     var buffer bytes.Buffer
 
     for {
-        nextpiece, _, _ := reader.ReadLine()
-        str_piece := strings.Trim(string(nextpiece), "\n\r")
+        scanner.Scan()
+        str_piece := scanner.Text()
         if str_piece != "END" {
             buffer.WriteString(str_piece)
             buffer.WriteByte('\n')
@@ -772,18 +772,17 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
 func ws_controller(venue string, symbol string) {
 
-    reader := bufio.NewReader(Books[venue][symbol].stderr)
+    scanner := bufio.NewScanner(Books[venue][symbol].stderr)
 
     for {
-        raw_headers, _, _ := reader.ReadLine()
-        str_header := strings.Trim(string(raw_headers), "\n\r\t /")
-        headers := strings.Split(str_header, " ")
+        scanner.Scan()
+        headers := strings.Split(scanner.Text(), " ")
 
         var buffer bytes.Buffer
 
         for {
-            nextpiece, _, _ := reader.ReadLine()
-            str_piece := strings.Trim(string(nextpiece), "\n\r")
+            scanner.Scan()
+            str_piece := scanner.Text()
             if str_piece != "END" {
                 buffer.WriteString(str_piece)
                 buffer.WriteByte('\n')
