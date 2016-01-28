@@ -14,4 +14,5 @@
 ## Features
 
 * Most things are the same as the pure Python server, [disorderBook](https://github.com/fohristiwhirl/disorderBook)
-* Internally, I borrowed the level-based book design from [DanielVF's Mutex](https://github.com/DanielVF/Mutex).
+* That means they're also basically the same as the official server
+* Internally, I borrowed the level-based book design from [DanielVF's Mutex](https://github.com/DanielVF/Mutex)
