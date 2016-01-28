@@ -773,7 +773,7 @@ func ws_controller(venue string, symbol string) {
         ClientListLock.Lock()
 
         for _, client := range TickerClients {
-            if client.Venue == venue {
+            if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
                 client.MessageChannel <- msg_from_stderr
             }
         }
