@@ -112,8 +112,8 @@ var BookCount = 0
 
 var Options OptionsStruct
 
-var TickerClients = make([]WsInfo, 0)
-var ExecutionClients = make([]WsInfo, 0)
+var TickerClients = make([]*WsInfo, 0)
+var ExecutionClients = make([]*WsInfo, 0)
 var ClientListLock sync.Mutex
 
 var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize:1024}
@@ -701,7 +701,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         info = WsInfo{account, venue, symbol, message_channel, true}
 
         ClientListLock.Lock()
-        TickerClients = append(TickerClients, info)
+        TickerClients = append(TickerClients, &info)
         ClientListLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/tickertape
@@ -713,7 +713,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         info = WsInfo{account, venue, symbol, message_channel, true}
 
         ClientListLock.Lock()
-        TickerClients = append(TickerClients, info)
+        TickerClients = append(TickerClients, &info)
         ClientListLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/executions/stocks/:symbol
@@ -725,7 +725,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         info = WsInfo{account, venue, symbol, message_channel, true}
 
         ClientListLock.Lock()
-        ExecutionClients = append(ExecutionClients, info)
+        ExecutionClients = append(ExecutionClients, &info)
         ClientListLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/executions
@@ -737,7 +737,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         info = WsInfo{account, venue, symbol, message_channel, true}
 
         ClientListLock.Lock()
-        ExecutionClients = append(ExecutionClients, info)
+        ExecutionClients = append(ExecutionClients, &info)
         ClientListLock.Unlock()
 
     // invalid URL
@@ -745,12 +745,17 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         return
     }
 
-    // go ws_null_reader(conn, &info.StillAlive)     // This handles reading and discarding incoming messages
+    go ws_null_reader(conn, &info.StillAlive)     // This handles reading and discarding incoming messages
 
     for {
         msg := <- message_channel
         err = conn.WriteMessage(websocket.TextMessage, []byte(msg))
         if err != nil {
+
+            ClientListLock.Lock()
+            info.StillAlive = false
+            ClientListLock.Unlock()
+
             return
         }
     }
