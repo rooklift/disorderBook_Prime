@@ -71,7 +71,7 @@
 #define TOO_HIGH_ACCOUNT 3
 
 
-#define EXECUTION_TEMPLATE_1 "{{\
+#define EXECUTION_TEMPLATE_1 "{\
   \"ok\": true,\
   \"account\": \"%s\",\
   \"venue\": \"%s\",\
@@ -86,7 +86,7 @@
   \"filledAt\": \"%s\",\
   \"standingComplete\": %s,\
   \"incomingComplete\": %s\
-}}"
+}"
 
 
 typedef struct Fill_struct {
