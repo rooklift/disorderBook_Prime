@@ -878,13 +878,19 @@ func main() {
 
     create_book_if_needed(Options.DefaultVenue, Options.DefaultSymbol)
 
-    fmt.Printf("disorderBook (C+Go version) starting up on port %d\n", Options.Port)
+    fmt.Printf("\ndisorderBook (C+Go version) starting up on port %d\n", Options.Port)
+    fmt.Printf("WebSockets on port %d\n", Options.WsPort)
+
+    if Options.WsPort == Options.Port {
+        fmt.Println("\nMain port and WebSocket port cannot be the same. Quitting.\n")
+        os.Exit(1)
+    }
 
     if Options.AccountFilename != "" {
         load_auth()
         AuthMode = true
     } else {
-        fmt.Printf("\n -----> Warning: running WITHOUT AUTHENTICATION! <-----\n")
+        fmt.Printf("\n-----> Warning: running WITHOUT AUTHENTICATION! <-----\n\n")
     }
 
     main_server_string := fmt.Sprintf("127.0.0.1:%d", Options.Port)
