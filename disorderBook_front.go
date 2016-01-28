@@ -2,6 +2,7 @@ package main
 
 import (
     "bufio"
+    "bytes"
     "encoding/json"
     "errors"
     "flag"
@@ -116,7 +117,7 @@ var TickerClients = make([]*WsInfo, 0)
 var ExecutionClients = make([]*WsInfo, 0)
 var ClientListLock sync.Mutex
 
-var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize:1024}
+var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 
 // --------------------------------------------------------------------------------------------
 
@@ -156,7 +157,7 @@ func create_book_if_needed (venue string, symbol string) error {
     return nil
 }
 
-func getresponse (command string, venue string, symbol string) string {
+func get_response (command string, venue string, symbol string) string {
 
     v := Books[venue]
     if v == nil {
@@ -177,12 +178,14 @@ func getresponse (command string, venue string, symbol string) string {
     reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, command)
 
-    response := ""
+    var buffer bytes.Buffer
+
     for {
         nextpiece, _, _ := reader.ReadLine()
         str_piece := strings.Trim(string(nextpiece), "\n\r")
         if str_piece != "END" {
-            response += str_piece + "\n"
+            buffer.WriteString(str_piece)
+            buffer.WriteString("\n")
         } else {
             break
         }
@@ -190,7 +193,7 @@ func getresponse (command string, venue string, symbol string) string {
 
     Locks[venue][symbol].Unlock()
 
-    return response
+    return buffer.String()
 }
 
 func get_binary_orderbook_to_json (venue string, symbol string) string {
@@ -306,7 +309,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
 
     Locks[venue][symbol].Unlock()
 
-    ts := getresponse("__TIMESTAMP__", venue, symbol)
+    ts := get_response("__TIMESTAMP__", venue, symbol)
     ts = strings.Trim(ts, "\n\r\t ")
 
     output = append(output, `], "ts": "`...)
@@ -436,7 +439,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
 
-            res := getresponse("QUOTE", venue, symbol)
+            res := get_response("QUOTE", venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -497,7 +500,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 AccountInts[account] = acc_id
             }
 
-            res := getresponse("STATUSALL " + strconv.Itoa(acc_id), venue, symbol)
+            res := get_response("STATUSALL " + strconv.Itoa(acc_id), venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -516,7 +519,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
 
-            res1 := getresponse("__ACC_FROM_ID__ " + strconv.Itoa(id), venue, symbol)
+            res1 := get_response("__ACC_FROM_ID__ " + strconv.Itoa(id), venue, symbol)
             res1 = strings.Trim(res1, " \t\n\r")
             reply_list := strings.Split(res1, " ")
             err_string, account := reply_list[0], reply_list[1]
@@ -540,7 +543,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             } else {
                 command = fmt.Sprintf("STATUS %d", id)
             }
-            res2 := getresponse(command, venue, symbol)
+            res2 := get_response(command, venue, symbol)
             fmt.Fprintf(writer, res2)
             return
         }
@@ -633,7 +636,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             }
 
             command := fmt.Sprintf("ORDER %s %d %d %d %d %d", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
-            res := getresponse(command, venue, symbol)
+            res := get_response(command, venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -646,7 +649,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             venue := pathlist[3]
             symbol := pathlist[5]
 
-            res := getresponse("__SCORES__", venue, symbol)
+            res := get_response("__SCORES__", venue, symbol)
             writer.Header().Set("Content-Type", "text/html")
             fmt.Fprintf(writer, res)
             return
@@ -775,12 +778,14 @@ func ws_controller(venue string, symbol string) {
         str_header := strings.Trim(string(raw_headers), "\n\r\t /")
         headers := strings.Split(str_header, " ")
 
-        msg_from_stderr := ""
+        var buffer bytes.Buffer
+
         for {
             nextpiece, _, _ := reader.ReadLine()
             str_piece := strings.Trim(string(nextpiece), "\n\r")
             if str_piece != "END" {
-                msg_from_stderr += str_piece + "\n"
+                buffer.WriteString(str_piece)
+                buffer.WriteString("\n")
             } else {
                 break
             }
@@ -793,7 +798,7 @@ func ws_controller(venue string, symbol string) {
                 if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
                     if client.StillAlive {
                         select {
-                            case client.MessageChannel <- msg_from_stderr :         // Send message unless buffer is full
+                            case client.MessageChannel <- buffer.String() :         // Send message unless buffer is full
                             default:
                         }
                     }
@@ -806,7 +811,7 @@ func ws_controller(venue string, symbol string) {
                 if client.Account == headers[1] && client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
                     if client.StillAlive {
                         select {
-                            case client.MessageChannel <- msg_from_stderr :     // Send message unless buffer is full
+                            case client.MessageChannel <- buffer.String() :         // Send message unless buffer is full
                             default:
                         }
                     }
