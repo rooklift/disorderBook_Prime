@@ -14,9 +14,9 @@ ws_test_executions.py
 ws_test_ticker.py
 
 # Other files:
-disorderCook_8005.bat
-disorderCook_with_auth.bat
-disorderCook_with_excess.bat
+disorderBook_8005.bat
+disorderBook_with_auth.bat
+disorderBook_with_excess.bat
 accounts.json
 deprecated/
 *.exe

@@ -88,7 +88,7 @@ const FRONTPAGE = `<html>
     disorderBook: unofficial Stockfighter server
 
     C+Go version
-    https://github.com/fohristiwhirl/disorderCook
+    https://github.com/fohristiwhirl/disorderBook_Prime
 
     By Amtiskaw (Fohristiwhirl on GitHub)
     With help from cite-reader, Medecau and DanielVF
@@ -138,7 +138,7 @@ func create_book_if_needed (venue string, symbol string) error {
             return errors.New("Too many books!")
         }
 
-        command := exec.Command("./disorderCook.exe", venue, symbol)
+        command := exec.Command("./disorderBook.exe", venue, symbol)
         i_pipe, _ := command.StdinPipe()
         o_pipe, _ := command.StdoutPipe()
         e_pipe, _ := command.StderrPipe()
