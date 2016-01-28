@@ -72,20 +72,20 @@
 
 
 #define EXECUTION_TEMPLATE_1 "{\
-  \"ok\": true,\
-  \"account\": \"%s\",\
-  \"venue\": \"%s\",\
-  \"symbol\": \"%s\",\
-  \"order\": "
+\"ok\": true,\
+\"account\": \"%s\",\
+\"venue\": \"%s\",\
+\"symbol\": \"%s\",\
+\"order\": "
 
 #define EXECUTION_TEMPLATE_2 ",\
-  \"standingId\": %d,\
-  \"incomingId\": %d,\
-  \"price\": %d,\
-  \"filled\": %d,\
-  \"filledAt\": \"%s\",\
-  \"standingComplete\": %s,\
-  \"incomingComplete\": %s\
+\"standingId\": %d,\
+\"incomingId\": %d,\
+\"price\": %d,\
+\"filled\": %d,\
+\"filledAt\": \"%s\",\
+\"standingComplete\": %s,\
+\"incomingComplete\": %s\
 }"
 
 
