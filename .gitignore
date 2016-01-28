@@ -8,9 +8,15 @@ tcc.exe
 tiny_impdef.exe
 tiny_libmaker.exe
 
+# Tests
+mass_order_test.py
+ws_test_executions.py
+ws_test_ticker.py
+
 # Other files:
 disorderCook_8005.bat
 disorderCook_with_auth.bat
 disorderCook_with_excess.bat
 accounts.json
+deprecated/
 *.exe
