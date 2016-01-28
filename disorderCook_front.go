@@ -791,8 +791,9 @@ func ws_controller(venue string, symbol string) {
         if headers[0] == "TICKER" {
             for _, client := range TickerClients {
                 if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
-                    if client.StillAlive {
-                        client.MessageChannel <- msg_from_stderr
+                    select {
+                        case client.MessageChannel <- msg_from_stderr :         // Send message unless buffer is full
+                        default:
                     }
                 }
             }
@@ -802,7 +803,10 @@ func ws_controller(venue string, symbol string) {
             for _, client := range ExecutionClients {
                 if client.Account == headers[1] && client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
                     if client.StillAlive {
-                        client.MessageChannel <- msg_from_stderr
+                        select {
+                            case client.MessageChannel <- msg_from_stderr :     // Send message unless buffer is full
+                            default:
+                        }
                     }
                 }
             }
