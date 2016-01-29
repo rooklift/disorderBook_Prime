@@ -794,6 +794,8 @@ func ws_controller(venue string, symbol string) {
 
         ClientListLock.Lock()
 
+        // FIXME: clients that aren't "StillAlive" need to be popped out of the list somehow
+
         if headers[0] == "TICKER" {
             for _, client := range TickerClients {
                 if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
