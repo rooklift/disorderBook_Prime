@@ -157,7 +157,7 @@ func create_book_if_needed (venue string, symbol string) error {
     return nil
 }
 
-func get_response (command string, venue string, symbol string) string {
+func get_response_from_book (command string, venue string, symbol string) string {
 
     v := Books[venue]
     if v == nil {
@@ -310,7 +310,7 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
 
     Locks[venue][symbol].Unlock()
 
-    ts := get_response("__TIMESTAMP__", venue, symbol)
+    ts := get_response_from_book("__TIMESTAMP__", venue, symbol)
     ts = strings.Trim(ts, "\n\r\t ")
 
     buffer.WriteString(`], "ts": "`)
@@ -440,7 +440,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
 
-            res := get_response("QUOTE", venue, symbol)
+            res := get_response_from_book("QUOTE", venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -501,7 +501,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 AccountInts[account] = acc_id
             }
 
-            res := get_response("STATUSALL " + strconv.Itoa(acc_id), venue, symbol)
+            res := get_response_from_book("STATUSALL " + strconv.Itoa(acc_id), venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -520,7 +520,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
 
-            res1 := get_response("__ACC_FROM_ID__ " + strconv.Itoa(id), venue, symbol)
+            res1 := get_response_from_book("__ACC_FROM_ID__ " + strconv.Itoa(id), venue, symbol)
             res1 = strings.Trim(res1, " \t\n\r")
             reply_list := strings.Split(res1, " ")
             err_string, account := reply_list[0], reply_list[1]
@@ -544,7 +544,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             } else {
                 command = fmt.Sprintf("STATUS %d", id)
             }
-            res2 := get_response(command, venue, symbol)
+            res2 := get_response_from_book(command, venue, symbol)
             fmt.Fprintf(writer, res2)
             return
         }
@@ -637,7 +637,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             }
 
             command := fmt.Sprintf("ORDER %s %d %d %d %d %d", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
-            res := get_response(command, venue, symbol)
+            res := get_response_from_book(command, venue, symbol)
             fmt.Fprintf(writer, res)
             return
         }
@@ -650,7 +650,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             venue := pathlist[3]
             symbol := pathlist[5]
 
-            res := get_response("__SCORES__", venue, symbol)
+            res := get_response_from_book("__SCORES__", venue, symbol)
             writer.Header().Set("Content-Type", "text/html")
             fmt.Fprintf(writer, res)
             return
