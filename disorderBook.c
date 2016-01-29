@@ -1635,7 +1635,11 @@ int main (int argc, char ** argv)
     int n;
     ORDER_AND_ERROR * o_and_e;
 
-    assert(argc == 3);
+    if (argc != 3)
+    {
+        printf("Backend called with %d arguments (2 required). Quitting.\n", argc - 1);
+        return 1;
+    }
 
     // On Windows, set stdout to not auto-convert \n into \r\n (messes with our binary orderbook)
     #if defined(_WIN32)
