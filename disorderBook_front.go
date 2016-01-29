@@ -220,12 +220,13 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
     var price uint32
     var commaflag bool
 
-    output := make([]byte, 0, 1024)
-    output = append(output, `{"ok": true, "venue": "`...)
-    output = append(output, venue...)
-    output = append(output, `", "symbol": "`...)
-    output = append(output, symbol...)
-    output = append(output, `", "bids": [`...)
+    var buffer bytes.Buffer
+
+    buffer.WriteString(`{"ok": true, "venue": "`)
+    buffer.WriteString(venue)
+    buffer.WriteString(`", "symbol": "`)
+    buffer.WriteString(symbol)
+    buffer.WriteString(`", "bids": [`)
 
     commaflag = false
     for {
@@ -253,20 +254,20 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
 
         if qty != 0 {
             if commaflag {
-                output = append(output, `, `...)
+                buffer.WriteString(`, `)
             }
-            output = append(output, `{"price": `...)
-            output = append(output, strconv.FormatUint(uint64(price), 10)...)
-            output = append(output, `, "qty": `...)
-            output = append(output, strconv.FormatUint(uint64(qty), 10)...)
-            output = append(output, `, "isBuy": true}`...)
+            buffer.WriteString(`{"price": `)
+            buffer.WriteString(strconv.FormatUint(uint64(price), 10))
+            buffer.WriteString(`, "qty": `)
+            buffer.WriteString(strconv.FormatUint(uint64(qty), 10))
+            buffer.WriteString(`, "isBuy": true}`)
             commaflag = true
         } else {
             break
         }
     }
 
-    output = append(output, `], "asks": [`...)
+    buffer.WriteString(`], "asks": [`)
 
     commaflag = false
     for {
@@ -294,13 +295,13 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
 
         if qty != 0 {
             if commaflag {
-                output = append(output, `, `...)
+                buffer.WriteString(`, `)
             }
-            output = append(output, `{"price": `...)
-            output = append(output, strconv.FormatUint(uint64(price), 10)...)
-            output = append(output, `, "qty": `...)
-            output = append(output, strconv.FormatUint(uint64(qty), 10)...)
-            output = append(output, `, "isBuy": false}`...)
+            buffer.WriteString(`{"price": `)
+            buffer.WriteString(strconv.FormatUint(uint64(price), 10))
+            buffer.WriteString(`, "qty": `)
+            buffer.WriteString(strconv.FormatUint(uint64(qty), 10))
+            buffer.WriteString(`, "isBuy": false}`)
             commaflag = true
         } else {
             break
@@ -312,11 +313,11 @@ func get_binary_orderbook_to_json (venue string, symbol string) string {
     ts := get_response("__TIMESTAMP__", venue, symbol)
     ts = strings.Trim(ts, "\n\r\t ")
 
-    output = append(output, `], "ts": "`...)
-    output = append(output, ts...)
-    output = append(output, `"}`...)
+    buffer.WriteString(`], "ts": "`)
+    buffer.WriteString(ts)
+    buffer.WriteString(`"}`)
 
-    return string(output[:])
+    return buffer.String()
 }
 
 func main_handler(writer http.ResponseWriter, request * http.Request) {
