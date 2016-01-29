@@ -72,19 +72,19 @@
 
 
 #define EXECUTION_TEMPLATE_1 "{\
-\"ok\": true,\
-\"account\": \"%s\",\
-\"venue\": \"%s\",\
-\"symbol\": \"%s\",\
+\"ok\": true, \
+\"account\": \"%s\", \
+\"venue\": \"%s\", \
+\"symbol\": \"%s\", \
 \"order\": "
 
-#define EXECUTION_TEMPLATE_2 ",\
-\"standingId\": %d,\
-\"incomingId\": %d,\
-\"price\": %d,\
-\"filled\": %d,\
-\"filledAt\": \"%s\",\
-\"standingComplete\": %s,\
+#define EXECUTION_TEMPLATE_2 ", \
+\"standingId\": %d, \
+\"incomingId\": %d, \
+\"price\": %d, \
+\"filled\": %d, \
+\"filledAt\": \"%s\", \
+\"standingComplete\": %s, \
 \"incomingComplete\": %s\
 }"
 
@@ -590,7 +590,7 @@ void create_execution_messages(ORDER * standing, ORDER * incoming, int quantity,
     print_order(stderr, standing);
     fprintf(stderr, EXECUTION_TEMPLATE_2, standing->id, incoming->id, price, quantity, ts,
             standing->open ? "false" : "true", incoming->open ? "false" : "true");
-            
+
     end_message(stderr);
 
     fprintf(stderr, "EXECUTION %s %s %s\n", incoming->account, Venue, Symbol);
