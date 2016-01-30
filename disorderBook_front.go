@@ -539,7 +539,6 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
 
             var command string
             if request.Method == "DELETE" {
-
                 command = fmt.Sprintf("CANCEL %d", id)
             } else {
                 command = fmt.Sprintf("STATUS %d", id)
@@ -843,24 +842,29 @@ func ws_null_reader(conn * websocket.Conn, alive_flag * bool) {
 }
 
 func load_auth() {
+
     file, err := ioutil.ReadFile(Options.AccountFilename)
-    if err == nil {
-        var di interface{}
-        err = json.Unmarshal(file, &di)
-        if err == nil {
-            m := di.(map[string]interface{})
-            for acc, apikey := range m {
-                switch apikey.(type) {
-                    case string:
-                        Auth[acc] = apikey.(string)
-                }
-            }
-        }
-    }
     if err != nil {
-        fmt.Printf("Couldn't load and parse accounts file.\n")
+        fmt.Printf("Couldn't load and parse accounts file.\n\n")
         os.Exit(1)
     }
+
+    var di interface{}
+    err = json.Unmarshal(file, &di)
+    if err != nil {
+        fmt.Printf("Couldn't load and parse accounts file.\n\n")
+        os.Exit(1)
+    }
+
+    m := di.(map[string]interface{})
+
+    for acc, apikey := range m {
+        switch apikey.(type) {
+            case string:
+                Auth[acc] = apikey.(string)
+        }
+    }
+
     return
 }
 
@@ -910,5 +914,4 @@ func main() {
     server_mux_ws := http.NewServeMux()
     server_mux_ws.HandleFunc("/", ws_handler)
     http.ListenAndServe(ws_server_string, server_mux_ws)
-
 }
