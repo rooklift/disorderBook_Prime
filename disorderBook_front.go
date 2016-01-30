@@ -123,9 +123,19 @@ var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 // --------------------------------------------------------------------------------------------
 
 func bad_name (name string) bool {
+
     if len(name) < 1 || len(name) > 20 {
         return true
     }
+
+    // Disallow all chars except alphanumeric and underscore...
+
+    for _, c := range(name) {
+        if c < 48 || (c > 57 && c < 65) || (c > 90 && c < 95) || c == 96 || c > 122 {
+            return true
+        }
+    }
+
     return false
 }
 
@@ -772,7 +782,8 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         if err != nil {
 
             // An unlikely but conceivable race could occur here if the controller sends loads of messages
-            // to us at exactly this point: we will quit and therefore the channel will stall.
+            // to us at exactly this point: we will quit and therefore the channel will stall. For that
+            // reason the controller actually checks if the channel is full before trying to send.
 
             ClientListLock.Lock()
             info.StillAlive = false
@@ -909,7 +920,7 @@ func main() {
     fmt.Printf("WebSockets on port %d\n", Options.WsPort)
 
     if Options.WsPort == Options.Port {
-        fmt.Println("\nMain port and WebSocket port cannot be the same. Quitting.\n")
+        fmt.Printf("\nMain port and WebSocket port cannot be the same. Quitting.\n\n")
         os.Exit(1)
     }
 
