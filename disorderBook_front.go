@@ -68,7 +68,7 @@ const (
     CREATE_BOOK_FAIL  = `{"ok": false, "error": "Couldn't create book! Either: bad name, or too many books exist"}`
     NOT_IMPLEMENTED   = `{"ok": false, "error": "Not implemented"}`
     DISABLED          = `{"ok": false, "error": "Disabled or not enabled. (See command line options)"}`
-    BAD_ACCOUNT_NAME  = `{"ok": false, "error": "Bad account name"}`
+    BAD_ACCOUNT_NAME  = `{"ok": false, "error": "Bad account name (should be alpha_numeric and sane length)"}`
 )
 
 const (
@@ -84,8 +84,8 @@ const (
 )
 
 const FRONTPAGE = `<html>
-    <head><title>disorderBook</title></head>
-    <body><pre>
+<head><title>disorderBook</title></head>
+<body><pre>
 
     disorderBook: unofficial Stockfighter server
 
@@ -100,7 +100,7 @@ const FRONTPAGE = `<html>
 
 
     "WOAH THATS FAST" -- DanielVF
-    </pre></body></html>`
+</pre></body></html>`
 
 // --------------------------------------------------------------------------------------------
 
@@ -897,8 +897,7 @@ func load_auth() {
 func main() {
 
     maxbooksPtr         := flag.Int("maxbooks", 100, "Maximum number of books")
-    portPtr             := flag.Int("port", 8000, "Port for web API")
-    wsportPtr           := flag.Int("wsport", 8001, "Port for WebSockets")
+    portPtr             := flag.Int("port", 8000, "Port for web API and WebSockets")
     accountfilenamePtr  := flag.String("accounts", "", "Accounts file for authentication")
     defaultvenuePtr     := flag.String("venue", "TESTEX", "Default venue")
     defaultsymbolPtr    := flag.String("symbol", "FOOBAR", "Default symbol")
@@ -908,7 +907,6 @@ func main() {
 
     Options = OptionsStruct{    MaxBooks : *maxbooksPtr,
                                     Port : *portPtr,
-                                  WsPort : *wsportPtr,
                          AccountFilename : *accountfilenamePtr,
                             DefaultVenue : *defaultvenuePtr,
                            DefaultSymbol : *defaultsymbolPtr,
@@ -917,12 +915,6 @@ func main() {
     create_book_if_needed(Options.DefaultVenue, Options.DefaultSymbol)
 
     fmt.Printf("\ndisorderBook (C+Go version) starting up on port %d\n", Options.Port)
-    fmt.Printf("WebSockets on port %d\n", Options.WsPort)
-
-    if Options.WsPort == Options.Port {
-        fmt.Printf("\nMain port and WebSocket port cannot be the same. Quitting.\n\n")
-        os.Exit(1)
-    }
 
     if Options.AccountFilename != "" {
         load_auth()
@@ -931,13 +923,9 @@ func main() {
         fmt.Printf("\n-----> Warning: running WITHOUT AUTHENTICATION! <-----\n\n")
     }
 
-    main_server_string := fmt.Sprintf("127.0.0.1:%d", Options.Port)
-    server_mux_main := http.NewServeMux()
-    server_mux_main.HandleFunc("/", main_handler)
-    go func(){http.ListenAndServe(main_server_string, server_mux_main)}()
-
-    ws_server_string := fmt.Sprintf("127.0.0.1:%d", Options.WsPort)
-    server_mux_ws := http.NewServeMux()
-    server_mux_ws.HandleFunc("/", ws_handler)
-    http.ListenAndServe(ws_server_string, server_mux_ws)
+    server_string := fmt.Sprintf("127.0.0.1:%d", Options.Port)
+    server_mux := http.NewServeMux()
+    server_mux.HandleFunc("/", main_handler)
+    server_mux.HandleFunc("/ob/api/ws/", ws_handler)
+    http.ListenAndServe(server_string, server_mux)
 }
