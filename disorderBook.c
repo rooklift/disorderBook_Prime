@@ -40,6 +40,7 @@
     */
 
 #include <assert.h>
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -456,14 +457,49 @@ void update_account (ACCOUNT * account, int quantity, int price, int direction)
 }
 
 
+int64_t get_size_from_level (LEVEL * level)
+{
+    ORDERNODE * ordernode;
+    int64_t ret;
+
+    if (level == NULL)
+    {
+        return 0;
+    }
+
+    ret = 0;
+
+    for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
+    {
+        ret += ordernode->order->qty;
+    }
+    return ret;
+}
+
+
+int64_t get_depth (LEVEL * level)        // Returns size of this level and all worse levels (if level exists)
+{
+    int64_t onesize;
+    int64_t ret;
+
+    ret = 0;
+
+    for ( ; level != NULL; level = level->next)
+    {
+        ret += get_size_from_level(level);
+    }
+    return ret;
+}
+
+
 void print_quote (FILE * outfile)
 {
     // Quotes are currently hideously inefficient, generated from scratch each time. Could FIXME.
 
-    int bidSize;
-    int bidDepth;
-    int askSize;
-    int askDepth;
+    int64_t bidSize;
+    int64_t bidDepth;
+    int64_t askSize;
+    int64_t askDepth;
     int bid;
     int ask;
     char * ts;
@@ -478,8 +514,8 @@ void print_quote (FILE * outfile)
     ts = new_timestamp();
 
     // Add all the fields that are always present...
-    snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %d, "
-                                 "\"askSize\": %d, \"bidDepth\": %d, \"askDepth\": %d, \"quoteTime\": \"%s\"",
+    snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %" PRId64 ", "
+                                 "\"askSize\": %" PRId64 ", \"bidDepth\": %" PRId64 ", \"askDepth\": %" PRId64 ", \"quoteTime\": \"%s\"",
              Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
 
     free(ts);
@@ -1286,53 +1322,6 @@ void cleanup_after_cancel (ORDERNODE * ordernode, LEVEL * level)       // Free t
     }
 
     return;
-}
-
-
-int get_size_from_level (LEVEL * level)
-{
-    ORDERNODE * ordernode;
-    int ret;
-
-    if (level == NULL)
-    {
-        return 0;
-    }
-
-    ret = 0;
-
-    for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
-    {
-        if ((2147483647 - ret) - ordernode->order->qty < 0)
-        {
-            return 2147483647;
-        } else {
-            ret += ordernode->order->qty;
-        }
-    }
-    return ret;
-}
-
-
-int get_depth (LEVEL * level)        // Returns size of this level and all worse levels (if level exists)
-{
-    int onesize;
-    int ret;
-
-    ret = 0;
-
-    for ( ; level != NULL; level = level->next)
-    {
-        onesize = get_size_from_level(level);
-
-        if ((2147483647 - ret) - onesize < 0)
-        {
-            return 2147483647;
-        } else {
-            ret += onesize;
-        }
-    }
-    return ret;
 }
 
 
