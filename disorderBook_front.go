@@ -65,9 +65,10 @@ const (
     BAD_ORDER         = `{"ok": false, "error": "Couldn't parse order ID"}`
     AUTH_FAILURE      = `{"ok": false, "error": "Unknown account or wrong API key"}`
     NO_VENUE_HEART    = `{"ok": false, "error": "Venue not up (create it by using it)"}`
-    TOO_MANY_BOOKS    = `{"ok": false, "error": "Book limit exceeded! (See command line options)"}`
+    CREATE_BOOK_FAIL  = `{"ok": false, "error": "Couldn't create book! Either: bad name, or too many books exist"}`
     NOT_IMPLEMENTED   = `{"ok": false, "error": "Not implemented"}`
     DISABLED          = `{"ok": false, "error": "Disabled or not enabled. (See command line options)"}`
+    BAD_ACCOUNT_NAME  = `{"ok": false, "error": "Bad account name"}`
 )
 
 const (
@@ -121,7 +122,18 @@ var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 
 // --------------------------------------------------------------------------------------------
 
+func bad_name (name string) bool {
+    if len(name) < 1 || len(name) > 20 {
+        return true
+    }
+    return false
+}
+
 func create_book_if_needed (venue string, symbol string) error {
+
+    if bad_name(venue) || bad_name(symbol) {
+        return errors.New("Bad name for a book!")
+    }
 
     if Books[venue] == nil {
 
@@ -436,7 +448,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
 
             err := create_book_if_needed(venue, symbol)
             if err != nil {
-                fmt.Fprintf(writer, TOO_MANY_BOOKS)
+                fmt.Fprintf(writer, CREATE_BOOK_FAIL)
                 return
             }
 
@@ -455,7 +467,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
 
             err := create_book_if_needed(venue, symbol)
             if err != nil {
-                fmt.Fprintf(writer, TOO_MANY_BOOKS)
+                fmt.Fprintf(writer, CREATE_BOOK_FAIL)
                 return
             }
 
@@ -495,9 +507,9 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 }
             }
 
-            acc_id := AccountInts[account]
-            if acc_id == 0 {
-                acc_id = len(AccountInts) + 1
+            acc_id, ok := AccountInts[account]
+            if !ok {
+                acc_id = len(AccountInts)
                 AccountInts[account] = acc_id
             }
 
@@ -589,7 +601,10 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
 
-            // FIXME add length checks
+            if bad_name(raw_order.Account) {
+                fmt.Fprintf(writer, BAD_ACCOUNT_NAME)
+                return
+            }
 
             int_ordertype := 0
             switch raw_order.OrderType {
@@ -623,15 +638,15 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 }
             }
 
-            acc_id := AccountInts[raw_order.Account]
-            if acc_id == 0 {
-                acc_id = len(AccountInts) + 1
+            acc_id, ok := AccountInts[raw_order.Account]
+            if !ok {
+                acc_id = len(AccountInts)
                 AccountInts[raw_order.Account] = acc_id
             }
 
             err = create_book_if_needed(venue, symbol)
             if err != nil {
-                fmt.Fprintf(writer, TOO_MANY_BOOKS)
+                fmt.Fprintf(writer, CREATE_BOOK_FAIL)
                 return
             }
 
