@@ -10,11 +10,11 @@
     We don't handle user input directly. The frontend is responsible for
     sending us commands as single lines. Only the ORDER command is tricky:
 
-    ORDER <account> <account_id> <qty> <price> <dir:1|2> <orderType:1|2|3|4>
+    ORDER  <account>  <account_id>  <(int32) qty>  <(int32) price>  <dir:1|2>  <orderType:1|2|3|4>
 
     e.g.
 
-    ORDER CES134127  5            100   5000    1         3
+    ORDER  CES134127       5             100             5000           1               3
 
     The frontend must give each account a unique, low, non-negative integer as
     an id (RAM is allocated based on these, so keep them as low as possible).
@@ -394,36 +394,34 @@ ORDER_AND_ERROR * init_o_and_e (void)
 
 void update_account (ACCOUNT * account, int quantity, int price, int direction)
 {
+    // Elsewhere we rather rely on shares and cents being int32,
+    // so don't change that now. If people exceed the bounds,
+    // their extra shares and money is "lost". Fine.
+
     int64_t tmp64;
 
     assert(account);
 
     // Update shares...
 
+    tmp64 = account->shares;
+
     if (direction == BUY)
     {
-        if (account->shares > 0)
+        tmp64 += quantity;
+        if (tmp64 > 2147483647)
         {
-            if ((2147483647 - account->shares) - quantity < 0)
-            {
-                account->shares = 2147483647;
-            } else {
-                account->shares += quantity;
-            }
+            account->shares = 2147483647;
         } else {
-            account->shares += quantity;
+            account->shares = (int) tmp64;
         }
     } else {
-        if (account->shares < 0)
+        tmp64 -= quantity;
+        if (tmp64 < -2147483647)
         {
-            if ((-2147483647 - account->shares) + quantity > 0)         // Don't write -2147483648
-            {
-                account->shares = -2147483647;
-            } else {
-                account->shares -= quantity;
-            }
+            account->shares = -2147483647;
         } else {
-            account->shares -= quantity;
+            account->shares = (int) tmp64;
         }
     }
 
@@ -703,13 +701,16 @@ void cross (ORDER * standing, ORDER * incoming)
 
     // Fix the positions of the 2 accounts...
 
-    if (standing->direction == BUY)
+    if (strcmp(standing->account->name, incoming->account->name))       // Transactions with self do nothing
     {
-        update_account(standing->account, quantity, price, BUY);
-        update_account(incoming->account, quantity, price, SELL);
-    } else {
-        update_account(standing->account, quantity, price, SELL);
-        update_account(incoming->account, quantity, price, BUY);
+        if (standing->direction == BUY)
+        {
+            update_account(standing->account, quantity, price, BUY);
+            update_account(incoming->account, quantity, price, SELL);
+        } else {
+            update_account(standing->account, quantity, price, SELL);
+            update_account(incoming->account, quantity, price, BUY);
+        }
     }
 
     create_execution_messages(standing, incoming, quantity, price, ts);
@@ -1535,36 +1536,13 @@ void print_scores (void)
         {
             account = AllAccounts[n];
 
-            // NAV will be printed as 32-bit, but we calculate it using 64 bits.
-            //
-            // We go through a huge amount of rigmarole to avoid overflows of the 64-bit number...
-            // The value of our position is guaranteed to fit inside a 64-bit int, but when we add
-            // our cash to it, it might overflow.
+            // The values account->shares and account->cents are both int32, as is LastPrice, so
+            // account->shares * LastPrice + account->cents is guaranteed to fit in an int64.
 
-            nav64 = (int64_t) account->shares * (int64_t) LastPrice;    // Cash not counted yet
+            nav64 = (int64_t) account->shares * (int64_t) LastPrice + (int64_t) account->cents;
 
-            if (nav64 > 0)
-            {
-                if (nav64 - 2147483647 > 2147483647)
-                {
-                    nav64 = 2147483647;         // NAV (sans cash) is huge enough, our cash is irrelevant
-                } else {
-                    nav64 += account->cents;    // NAV (sans cash) is small enough, we can add a 32-bit number to it
-                }
-            } else {
-                if (nav64 + 2147483647 < -2147483647)
-                {
-                    nav64 = -2147483647;
-                } else {
-                    nav64 += account->cents;
-                }
-            }
-
-            if (nav64 > 2147483647) nav64 = 2147483647;
-            if (nav64 < -2147483647) nav64 = -2147483647;
-
-            printf("%20s %15d %15d %15d %15d %15d\n",
-                   account->name, account->cents / 100, account->shares, account->posmin, account->posmax, (int) nav64 / 100);
+            printf("%20s %15d %15d %15d %15d %15" PRId64 "\n",
+                    account->name, account->cents / 100, account->shares, account->posmin, account->posmax, nav64 / 100);
         }
     }
 
