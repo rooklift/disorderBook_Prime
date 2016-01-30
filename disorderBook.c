@@ -619,16 +619,16 @@ void create_ticker_message (void)
 
 void create_execution_messages(ORDER * standing, ORDER * incoming, int quantity, int price, char * ts)
 {
-    fprintf(stderr, "EXECUTION %s %s %s\n", standing->account, Venue, Symbol);
-    fprintf(stderr, EXECUTION_TEMPLATE_1, standing->account, Venue, Symbol);
+    fprintf(stderr, "EXECUTION %s %s %s\n", standing->account->name, Venue, Symbol);
+    fprintf(stderr, EXECUTION_TEMPLATE_1, standing->account->name, Venue, Symbol);
     print_order(stderr, standing);
     fprintf(stderr, EXECUTION_TEMPLATE_2, standing->id, incoming->id, price, quantity, ts,
             standing->open ? "false" : "true", incoming->open ? "false" : "true");
 
     end_message(stderr);
 
-    fprintf(stderr, "EXECUTION %s %s %s\n", incoming->account, Venue, Symbol);
-    fprintf(stderr, EXECUTION_TEMPLATE_1, incoming->account, Venue, Symbol);
+    fprintf(stderr, "EXECUTION %s %s %s\n", incoming->account->name, Venue, Symbol);
+    fprintf(stderr, EXECUTION_TEMPLATE_1, incoming->account->name, Venue, Symbol);
     print_order(stderr, incoming);
     fprintf(stderr, EXECUTION_TEMPLATE_2, standing->id, incoming->id, price, quantity, ts,
             standing->open ? "false" : "true", incoming->open ? "false" : "true");
