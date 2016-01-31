@@ -924,8 +924,8 @@ func main() {
     }
 
     server_string := fmt.Sprintf("127.0.0.1:%d", Options.Port)
-    server_mux := http.NewServeMux()
-    server_mux.HandleFunc("/", main_handler)
-    server_mux.HandleFunc("/ob/api/ws/", ws_handler)
-    http.ListenAndServe(server_string, server_mux)
+
+    http.HandleFunc("/", main_handler)
+    http.HandleFunc("/ob/api/ws/", ws_handler)
+    http.ListenAndServe(server_string, nil)
 }
