@@ -49,8 +49,8 @@ type WsInfo struct {
     Account             string
     Venue               string
     Symbol              string
+    ConnType            int
     MessageChannel      chan string
-    StillAlive          bool
 }
 
 const (
@@ -81,6 +81,11 @@ const (
     MARKET = 2
     FOK = 3
     IOC = 4
+)
+
+const (
+    TICKER = 1
+    EXECUTION = 2
 )
 
 const FRONTPAGE = `<html>
@@ -114,8 +119,7 @@ var BookCount = 0
 
 var Options OptionsStruct
 
-var TickerClients = make([]*WsInfo, 0)
-var ExecutionClients = make([]*WsInfo, 0)
+var WebSocketClients = make([]*WsInfo, 0)
 var ClientListLock sync.Mutex
 
 var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
@@ -726,10 +730,10 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         venue = pathlist[5]
         symbol = pathlist[8]
 
-        info = WsInfo{account, venue, symbol, message_channel, true}
+        info = WsInfo{account, venue, symbol, TICKER, message_channel}
 
         ClientListLock.Lock()
-        TickerClients = append(TickerClients, &info)
+        WebSocketClients = append(WebSocketClients, &info)
         ClientListLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/tickertape
@@ -738,10 +742,10 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         venue = pathlist[5]
         symbol = ""
 
-        info = WsInfo{account, venue, symbol, message_channel, true}
+        info = WsInfo{account, venue, symbol, TICKER, message_channel}
 
         ClientListLock.Lock()
-        TickerClients = append(TickerClients, &info)
+        WebSocketClients = append(WebSocketClients, &info)
         ClientListLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/executions/stocks/:symbol
@@ -750,10 +754,10 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         venue = pathlist[5]
         symbol = pathlist[8]
 
-        info = WsInfo{account, venue, symbol, message_channel, true}
+        info = WsInfo{account, venue, symbol, EXECUTION, message_channel}
 
         ClientListLock.Lock()
-        ExecutionClients = append(ExecutionClients, &info)
+        WebSocketClients = append(WebSocketClients, &info)
         ClientListLock.Unlock()
 
     //ob/api/ws/:trading_account/venues/:venue/executions
@@ -762,10 +766,10 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         venue = pathlist[5]
         symbol = ""
 
-        info = WsInfo{account, venue, symbol, message_channel, true}
+        info = WsInfo{account, venue, symbol, EXECUTION, message_channel}
 
         ClientListLock.Lock()
-        ExecutionClients = append(ExecutionClients, &info)
+        WebSocketClients = append(WebSocketClients, &info)
         ClientListLock.Unlock()
 
     // invalid URL
@@ -774,21 +778,15 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         return
     }
 
-    go ws_null_reader(conn, &info.StillAlive)     // This handles reading and discarding incoming messages
+    fmt.Printf("WebSocket -OPEN- ... Active == %d\n", len(WebSocketClients))
+
+    go ws_null_reader(conn, &info)     // This handles reading and discarding incoming messages
 
     for {
         msg := <- message_channel
         err = conn.WriteMessage(websocket.TextMessage, []byte(msg))
         if err != nil {
-
-            // An unlikely but conceivable race could occur here if the controller sends loads of messages
-            // to us at exactly this point: we will quit and therefore the channel will stall. For that
-            // reason the controller actually checks if the channel is full before trying to send.
-
-            ClientListLock.Lock()
-            info.StillAlive = false
-            ClientListLock.Unlock()
-
+            fmt.Println("Error writing to WS. (This never seems to actually happen.)")
             return
         }
     }
@@ -803,6 +801,20 @@ func ws_controller(venue string, symbol string) {
     for {
         scanner.Scan()
         headers := strings.Split(scanner.Text(), " ")
+
+        var msg_type int
+
+        // The backend sends a header line in format TYPE ACCOUNT VENUE SYMBOL
+        // (the last 2 pieces aren't needed as we know what they are already).
+
+        if headers[0] == "TICKER" {
+            msg_type = TICKER
+        } else if headers[0] == "EXECUTION" {
+            msg_type = EXECUTION
+        } else {
+            msg_type = 0
+            fmt.Println("Unknown WS message type received from backend!")
+        }
 
         var buffer bytes.Buffer
 
@@ -819,25 +831,10 @@ func ws_controller(venue string, symbol string) {
 
         ClientListLock.Lock()
 
-        // FIXME: clients that aren't "StillAlive" need to be popped out of the list somehow
-
-        if headers[0] == "TICKER" {
-            for _, client := range TickerClients {
+        for _, client := range WebSocketClients {
+            if (client.ConnType == TICKER && msg_type == TICKER) || (client.ConnType == EXECUTION && msg_type == EXECUTION) {
                 if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
-                    if client.StillAlive {
-                        select {
-                            case client.MessageChannel <- buffer.String() :         // Send message unless buffer is full
-                            default:
-                        }
-                    }
-                }
-            }
-        }
-
-        if headers[0] == "EXECUTION" {
-            for _, client := range ExecutionClients {
-                if client.Account == headers[1] && client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
-                    if client.StillAlive {
+                    if client.Account == headers[1] || client.ConnType == TICKER {
                         select {
                             case client.MessageChannel <- buffer.String() :         // Send message unless buffer is full
                             default:
@@ -851,14 +848,26 @@ func ws_controller(venue string, symbol string) {
     }
 }
 
-// Apparently reading WebSocket messages from clients is mandatory...
+// Apparently reading WebSocket messages from clients is mandatory.
+// This function also deletes dead clients from the list.
 
-func ws_null_reader(conn * websocket.Conn, alive_flag * bool) {
+func ws_null_reader(conn * websocket.Conn, info_ptr * WsInfo) {
     for {
         if _, _, err := conn.NextReader(); err != nil {
 
             ClientListLock.Lock()
-            *alive_flag = false
+
+            for i, client_ptr := range WebSocketClients {
+                if client_ptr == info_ptr {
+                    // Replace the pointer to this client by the final
+                    // pointer in the list, then shorten the list by 1.
+                    WebSocketClients[i] = WebSocketClients[len(WebSocketClients) - 1]
+                    WebSocketClients = WebSocketClients[:len(WebSocketClients) - 1]
+                    fmt.Printf("WebSocket CLOSED ... Active == %d\n", len(WebSocketClients))
+                    break
+                }
+            }
+
             ClientListLock.Unlock()
 
             conn.Close()
