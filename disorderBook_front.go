@@ -126,7 +126,7 @@ var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 
 // --------------------------------------------------------------------------------------------
 
-func bad_name (name string) bool {
+func bad_name(name string) bool {
 
     if len(name) < 1 || len(name) > 20 {
         return true
@@ -143,7 +143,7 @@ func bad_name (name string) bool {
     return false
 }
 
-func create_book_if_needed (venue string, symbol string) error {
+func create_book_if_needed(venue string, symbol string) error {
 
     if bad_name(venue) || bad_name(symbol) {
         return errors.New("Bad name for a book!")
@@ -183,7 +183,7 @@ func create_book_if_needed (venue string, symbol string) error {
     return nil
 }
 
-func get_response_from_book (command string, venue string, symbol string) string {
+func get_response_from_book(command string, venue string, symbol string) string {
 
     v := Books[venue]
     if v == nil {
@@ -222,7 +222,7 @@ func get_response_from_book (command string, venue string, symbol string) string
     return buffer.String()
 }
 
-func get_binary_orderbook_to_json (venue string, symbol string) string {
+func get_binary_orderbook_to_json(venue string, symbol string) string {
 
     // See comments in the C code for how the incoming data is formatted
 
@@ -786,8 +786,8 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         msg := <- message_channel
         err = conn.WriteMessage(websocket.TextMessage, []byte(msg))
         if err != nil {
-            fmt.Println("Error writing to WS. (This never seems to actually happen.)")
-            return
+            delete_client_from_global_list(&info)
+            return      // The function ws_null_reader() will likely close the connection.
         }
     }
 }
@@ -848,28 +848,32 @@ func ws_controller(venue string, symbol string) {
     }
 }
 
+func delete_client_from_global_list(info_ptr * WsInfo) {
+
+    ClientListLock.Lock()
+
+    for i, client_ptr := range WebSocketClients {
+        if client_ptr == info_ptr {
+            // Replace the pointer to this client by the final
+            // pointer in the list, then shorten the list by 1.
+            WebSocketClients[i] = WebSocketClients[len(WebSocketClients) - 1]
+            WebSocketClients = WebSocketClients[:len(WebSocketClients) - 1]
+            fmt.Printf("WebSocket CLOSED ... Active == %d\n", len(WebSocketClients))
+            break
+        }
+    }
+
+    ClientListLock.Unlock()
+    return
+}
+
 // Apparently reading WebSocket messages from clients is mandatory.
-// This function also deletes dead clients from the list.
+// This function also closes connections if needed.
 
 func ws_null_reader(conn * websocket.Conn, info_ptr * WsInfo) {
     for {
         if _, _, err := conn.NextReader(); err != nil {
-
-            ClientListLock.Lock()
-
-            for i, client_ptr := range WebSocketClients {
-                if client_ptr == info_ptr {
-                    // Replace the pointer to this client by the final
-                    // pointer in the list, then shorten the list by 1.
-                    WebSocketClients[i] = WebSocketClients[len(WebSocketClients) - 1]
-                    WebSocketClients = WebSocketClients[:len(WebSocketClients) - 1]
-                    fmt.Printf("WebSocket CLOSED ... Active == %d\n", len(WebSocketClients))
-                    break
-                }
-            }
-
-            ClientListLock.Unlock()
-
+            delete_client_from_global_list(info_ptr)
             conn.Close()
             return
         }
