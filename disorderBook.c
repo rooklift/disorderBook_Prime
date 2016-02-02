@@ -1650,7 +1650,6 @@ int main (int argc, char ** argv)
     char * tmp;
     char input[MAXSTRING];
     char tokens[MAXTOKENS][SMALLSTRING];
-    int token_count;
     int id;
     int n;
     ORDER_AND_ERROR * o_and_e;
@@ -1682,7 +1681,6 @@ int main (int argc, char ** argv)
             return 1;
         }
 
-        token_count = 0;
         tmp = strtok(input, " \t\n\r");
         for (n = 0; n < MAXTOKENS; n++)
         {
@@ -1690,7 +1688,6 @@ int main (int argc, char ** argv)
             if (tmp != NULL)
             {
                 safe_strcpy(tokens[n], tmp, SMALLSTRING);
-                token_count += 1;
                 tmp = strtok(NULL, " \t\n\r");
             }
         }
