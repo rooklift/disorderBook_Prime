@@ -1327,46 +1327,6 @@ void cleanup_after_cancel (ORDERNODE * ordernode, LEVEL * level)       // Free t
 }
 
 
-void print_orderbook (void)     // This is really slow and needs help
-{
-    char * ts;
-    LEVEL * level;
-    int flag;
-    ORDERNODE * ordernode;
-
-    ts = new_timestamp();
-    printf("{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"ts\": \"%s\",\n", Venue, Symbol, ts);
-    free(ts);
-
-    printf("\"asks\": [");
-    flag = 0;
-    for (level = FirstAskLevel; level != NULL; level = level->next)
-    {
-        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
-        {
-            if (flag) printf(", \n");
-            printf("{\"price\": %d, \"qty\": %d, \"isBuy\": false}", ordernode->order->price, ordernode->order->qty);
-            flag = 1;
-        }
-    }
-    printf("],\n");
-
-    printf("\"bids\": [");
-    flag = 0;
-    for (level = FirstBidLevel; level != NULL; level = level->next)
-    {
-        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
-        {
-            if (flag) printf(", \n");
-            printf("{\"price\": %d, \"qty\": %d, \"isBuy\": true}", ordernode->order->price, ordernode->order->qty);
-            flag = 1;
-        }
-    }
-    printf("]}");
-
-    return;
-}
-
 void print_orderbook_binary (void)
 {
     /*
@@ -1638,13 +1598,6 @@ int main (int argc, char ** argv)
             }
             free(o_and_e);
 
-            end_message(stdout);
-            continue;
-        }
-
-        if (strcmp("ORDERBOOK", tokens[0]) == 0)
-        {
-            print_orderbook();
             end_message(stdout);
             continue;
         }
