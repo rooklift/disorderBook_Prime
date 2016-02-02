@@ -145,6 +145,19 @@ typedef struct OrderPtrAndError_struct {
     int error;
 } ORDER_AND_ERROR;
 
+typedef struct Quote_struct {       // Anything that can exceed 2^31-1 is an int64
+    int64_t bidSize;
+    int64_t askSize;
+    int64_t bidDepth;
+    int64_t askDepth;
+    int bid;
+    int ask;
+    int last;
+    int lastSize;
+    char lastTrade[SMALLSTRING];
+    char quoteTime[SMALLSTRING];
+} QUOTE;
+
 typedef struct DebugInfo_struct {
     int inits_of_level;
     int inits_of_fill;
@@ -169,16 +182,14 @@ char * StartTime = NULL;
 LEVEL * FirstBidLevel = NULL;
 LEVEL * FirstAskLevel = NULL;
 
-char * LastTradeTime = NULL;
-int LastPrice = -1;                 // Don't change this now, is checked by score function
-int LastSize = -1;
-
 ORDER ** AllOrders = NULL;
 int CurrentOrderArrayLen = 0;
 int HighestKnownOrder = -1;
 
 ACCOUNT ** AllAccounts = NULL;      // The array of all accounts gets realloc'd as needed,
 int CurrentAccountArrayLen = 0;     // but it should probably simply have a fixed size.
+
+QUOTE Quote = {0, 0, 0, 0, -1, -1, -1, -1, "", ""};
 
 DEBUG_INFO DebugInfo = {0};         // Think global is auto-zeroed anyway, but whatever
 
@@ -492,49 +503,29 @@ int64_t get_depth (LEVEL * level)        // Returns size of this level and all w
 
 void print_quote (FILE * outfile)
 {
-    // Quotes are currently hideously inefficient, generated from scratch each time. Could FIXME.
-
-    int64_t bidSize;
-    int64_t bidDepth;
-    int64_t askSize;
-    int64_t askDepth;
-    int bid;
-    int ask;
-    char * ts;
     char buildup[MAXSTRING];
     char part[MAXSTRING];
-
-    bidSize = get_size_from_level(FirstBidLevel);
-    bidDepth = get_depth(FirstBidLevel);
-    askSize = get_size_from_level(FirstAskLevel);
-    askDepth = get_depth(FirstAskLevel);
-
-    ts = new_timestamp();
 
     // Add all the fields that are always present...
     snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %" PRId64 ", "
                                  "\"askSize\": %" PRId64 ", \"bidDepth\": %" PRId64 ", \"askDepth\": %" PRId64 ", \"quoteTime\": \"%s\"",
-             Symbol, Venue, bidSize, askSize, bidDepth, askDepth, ts);
+             Symbol, Venue, Quote.bidSize, Quote.askSize, Quote.bidDepth, Quote.askDepth, Quote.quoteTime);
 
-    free(ts);
-
-    if (FirstBidLevel)
+    if (Quote.bid >= 0)         // -1 used as a null value
     {
-        bid = FirstBidLevel->price;
-        snprintf(part, MAXSTRING, ", \"bid\": %d", bid);
+        snprintf(part, MAXSTRING, ", \"bid\": %d", Quote.bid);
         strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
     }
 
-    if (FirstAskLevel)
+    if (Quote.ask >= 0)         // -1 used as a null value
     {
-        ask = FirstAskLevel->price;
-        snprintf(part, MAXSTRING, ", \"ask\": %d", ask);
+        snprintf(part, MAXSTRING, ", \"ask\": %d", Quote.ask);
         strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
     }
 
-    if (LastTradeTime)
+    if (Quote.lastTrade[0])     // i.e. check the timestamp of the last trade is a non-empty string
     {
-        snprintf(part, MAXSTRING, ", \"lastTrade\": \"%s\", \"lastSize\": %d, \"last\": %d", LastTradeTime, LastSize, LastPrice);
+        snprintf(part, MAXSTRING, ", \"lastTrade\": \"%s\", \"lastSize\": %d, \"last\": %d", Quote.lastTrade, Quote.lastSize, Quote.last);
         strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
     }
 
@@ -638,6 +629,59 @@ void create_execution_messages(ORDER * standing, ORDER * incoming, int quantity,
 }
 
 
+// The following function remakes the parts of the quote that are
+// determined by the state of the book itself (i.e. NOT "last trade" info)
+
+void remake_most_of_quote (void)
+{
+    char * ts;
+
+    Quote.bidSize = get_size_from_level(FirstBidLevel);
+    Quote.bidDepth = get_depth(FirstBidLevel);
+    Quote.askSize = get_size_from_level(FirstAskLevel);
+    Quote.askDepth = get_depth(FirstAskLevel);
+
+    if (FirstBidLevel)
+    {
+        Quote.bid = FirstBidLevel->price;
+    } else {
+        Quote.bid = -1;
+    }
+
+    if (FirstAskLevel)
+    {
+        Quote.ask = FirstAskLevel->price;
+    } else {
+        Quote.ask = -1;
+    }
+
+    ts = new_timestamp();
+    safe_strcpy(Quote.quoteTime, ts, SMALLSTRING);
+    free(ts);
+
+    // We can't touch last, lastSize, or lastTrade
+    // as this function is called often even when
+    // no actual fill has happened.
+
+    return;
+}
+
+
+void set_quote_lastinfo (int last, int lastSize)
+{
+    char * ts;
+
+    Quote.last = last;
+    Quote.lastSize = lastSize;
+
+    ts = new_timestamp();
+    safe_strcpy(Quote.lastTrade, ts, SMALLSTRING);
+    free(ts);
+
+    return;
+}
+
+
 void cross (ORDER * standing, ORDER * incoming)
 {
     int quantity;
@@ -661,10 +705,6 @@ void cross (ORDER * standing, ORDER * incoming)
     incoming->totalFilled += quantity;
 
     price = standing->price;
-
-    LastTradeTime = ts;
-    LastPrice = price;
-    LastSize = quantity;
 
     fill = init_fill(price, quantity, ts);
 
@@ -712,6 +752,9 @@ void cross (ORDER * standing, ORDER * incoming)
             update_account(incoming->account, quantity, price, BUY);
         }
     }
+
+    set_quote_lastinfo(price, quantity);    // The rest of the quote will be generated by the function
+                                            // execute_order() when the whole execution is finished
 
     create_execution_messages(standing, incoming, quantity, price, ts);
 
@@ -1210,9 +1253,17 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
         }
     }
 
-    // Generate a WebSocket ticker message...
+    // If something happened, fix the quote and fire a ticker WebSocket message.
+    // The definition of "something happened" is anything that changes the book:
+    //      - a limit order was placed, OR
+    //      - fills were generated
+    // Nothing else changes the book except cancels, which we aren't dealing with here.
 
-    create_ticker_message();
+    if (order->totalFilled || order->orderType == LIMIT)
+    {
+        remake_most_of_quote();     // the "last trade" parts are done by cross()
+        create_ticker_message();
+    }
 
     o_and_e->order = order;
     return o_and_e;
@@ -1398,7 +1449,7 @@ void print_orderbook_binary (void)
     ORDERNODE * ordernode;
 
     int n;
-    uint32_t qty;       // the order qty and price are signed ints not exceeding 2^31
+    uint32_t qty;       // the order qty and price are signed ints not exceeding 2^31-1
     uint32_t price;     // but promotion to unsigned here seems perfectly fine
 
     for (level = FirstBidLevel; level != NULL; level = level->next)
@@ -1494,7 +1545,7 @@ void cancel_order_by_id (int id)
     // Find the level then the ordernode, if possible...
 
     level = find_level(price, dir);
-    ordernode = find_ordernode(level, id);      // This is safe even if level == NULL
+    ordernode = find_ordernode(level, id);          // This is safe even if level == NULL
 
     // Now close the order and do the linked-list fiddling...
 
@@ -1503,10 +1554,12 @@ void cancel_order_by_id (int id)
         ordernode->order->open = 0;
         ordernode->order->qty = 0;
 
-        cleanup_after_cancel(ordernode, level);   // Frees the node and even the level if needed; fixes links
+        cleanup_after_cancel(ordernode, level);     // Frees the node and even the level if needed; fixes links
+
+        remake_most_of_quote();                     // Remakes all but the "last trade" info in the quote
+        create_ticker_message();
     }
 
-    create_ticker_message();
     return;
 }
 
@@ -1520,13 +1573,13 @@ void print_scores (void)
 
     printf("<html><head><title>disorderBook Scores</title></head><body><pre>%s %s\n", Venue, Symbol);
 
-    if (LastPrice == -1)
+    if (Quote.last == -1)
     {
         printf("No trading activity yet.</pre>");
         return;
     }
 
-    printf("Current price: $%d.%02d\n\n", LastPrice / 100, LastPrice % 100);
+    printf("Current price: $%d.%02d\n\n", Quote.last / 100, Quote.last % 100);
 
     printf("             Account           USD $          Shares         Pos.min         Pos.max           NAV $\n");
 
@@ -1536,10 +1589,10 @@ void print_scores (void)
         {
             account = AllAccounts[n];
 
-            // The values account->shares and account->cents are both int32, as is LastPrice, so
-            // account->shares * LastPrice + account->cents is guaranteed to fit in an int64.
+            // The values account->shares and account->cents are both int32, as is Quote.last, so
+            // account->shares * Quote.last + account->cents is guaranteed to fit in an int64.
 
-            nav64 = (int64_t) account->shares * (int64_t) LastPrice + (int64_t) account->cents;
+            nav64 = (int64_t) account->shares * (int64_t) Quote.last + (int64_t) account->cents;
 
             printf("%20s %15d %15d %15d %15d %15" PRId64 "\n",
                     account->name, account->cents / 100, account->shares, account->posmin, account->posmax, nav64 / 100);
