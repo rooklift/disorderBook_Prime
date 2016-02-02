@@ -796,28 +796,28 @@ void run_order (ORDER * order)
 }
 
 
-void cleanup_closed_bids (void)
+void cleanup_closed_bids_or_asks (LEVEL ** root_level)  // root_level is pointing to FirstBidLevel or FirstAskLevel, themselves pointers
 {
     LEVEL * current_level;
     LEVEL * old_level;
     ORDERNODE * current_node;
     ORDERNODE * old_node;
 
-    if (FirstBidLevel == NULL) return;
+    if (*root_level == NULL) return;
 
-    current_level = FirstBidLevel;
+    current_level = *root_level;                        // Due to the double indirection, current_level still a pointer to a LEVEL
     current_node = current_level->firstordernode;
     assert(current_node != NULL);
 
     while (1)
     {
-        if (current_node->order->open)
+        if (current_node->order->open)                  // We found the very first (highest priority) open order
         {
             current_level->firstordernode = current_node;
+            current_level->prev = NULL;
             current_node->prev = NULL;
-            FirstBidLevel = current_level;
-            FirstBidLevel->prev = NULL;
-            return;
+            *root_level = current_level;                // Remembering that current_level is a pointer, so
+            return;                                     // FirstBidLevel or FirstAskLevel ends up pointing to the level
         }
 
         if (current_node->next != NULL)
@@ -836,57 +836,7 @@ void cleanup_closed_bids (void)
                 current_node = current_level->firstordernode;
                 assert(current_node != NULL);
             } else {
-                FirstBidLevel = NULL;
-                return;
-            }
-        }
-    }
-
-    return;
-}
-
-
-void cleanup_closed_asks (void)     // This and the above could be consolidated into a single function...
-{
-    LEVEL * current_level;
-    LEVEL * old_level;
-    ORDERNODE * current_node;
-    ORDERNODE * old_node;
-
-    if (FirstAskLevel == NULL) return;
-
-    current_level = FirstAskLevel;
-    current_node = current_level->firstordernode;
-    assert(current_node != NULL);
-
-    while (1)
-    {
-        if (current_node->order->open)
-        {
-            current_level->firstordernode = current_node;
-            current_node->prev = NULL;
-            FirstAskLevel = current_level;
-            FirstAskLevel->prev = NULL;
-            return;
-        }
-
-        if (current_node->next != NULL)
-        {
-            old_node = current_node;
-            current_node = current_node->next;
-            free(old_node);
-        } else {
-            old_node = current_node;
-            old_level = current_level;
-            current_level = current_level->next;
-            free(old_node);
-            free(old_level);
-            if (current_level != NULL)
-            {
-                current_node = current_level->firstordernode;
-                assert(current_node != NULL);
-            } else {
-                FirstAskLevel = NULL;
+                *root_level = NULL;
                 return;
             }
         }
@@ -1225,9 +1175,9 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
 
     if (order->direction == SELL)
     {
-        cleanup_closed_bids();
+        cleanup_closed_bids_or_asks(&FirstBidLevel);
     } else {
-        cleanup_closed_asks();
+        cleanup_closed_bids_or_asks(&FirstAskLevel);
     }
 
     // Market orders get set to price == 0 in official for storage / reporting
