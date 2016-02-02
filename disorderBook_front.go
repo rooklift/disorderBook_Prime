@@ -832,15 +832,19 @@ func ws_controller(venue string, symbol string) {
         ClientListLock.Lock()
 
         for _, client := range WebSocketClients {
-            if (client.ConnType == TICKER && msg_type == TICKER) || (client.ConnType == EXECUTION && msg_type == EXECUTION) {
-                if client.Venue == venue && (client.Symbol == symbol || client.Symbol == "") {
-                    if client.Account == headers[1] || client.ConnType == TICKER {
-                        select {
-                            case client.MessageChannel <- buffer.String() :         // Send message unless buffer is full
-                            default:
-                        }
-                    }
-                }
+
+            if client.ConnType != msg_type {
+                continue
+            }
+            if client.Venue != venue || (client.Symbol != symbol && client.Symbol != "") {
+                continue
+            }
+            if client.Account != headers[1] && client.ConnType != TICKER {
+                continue
+            }
+            select {
+                case client.MessageChannel <- buffer.String() :         // Send message unless buffer is full
+                default:
             }
         }
 
@@ -849,6 +853,8 @@ func ws_controller(venue string, symbol string) {
 }
 
 func delete_client_from_global_list(info_ptr * WsInfo) {
+
+    // Does nothing if the client isn't in the list
 
     ClientListLock.Lock()
 
