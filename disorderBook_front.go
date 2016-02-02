@@ -836,10 +836,13 @@ func ws_controller(venue string, symbol string) {
             if client.ConnType != msg_type {
                 continue
             }
-            if client.Venue != venue || (client.Symbol != symbol && client.Symbol != "") {
+            if client.Account != headers[1] && client.ConnType == EXECUTION {
                 continue
             }
-            if client.Account != headers[1] && client.ConnType != TICKER {
+            if client.Venue != venue {
+                continue
+            }
+            if client.Symbol != symbol && client.Symbol != "" {
                 continue
             }
             select {
