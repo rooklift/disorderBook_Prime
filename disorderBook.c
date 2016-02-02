@@ -1398,54 +1398,35 @@ void print_orderbook_binary (void)
     LEVEL * level;
     ORDERNODE * ordernode;
 
+    int i;
     int n;
     uint32_t qty;       // the order qty and price are signed ints not exceeding 2^31-1
     uint32_t price;     // but promotion to unsigned here seems perfectly fine
 
-    for (level = FirstBidLevel; level != NULL; level = level->next)
+    for (i = 0; i < 2; i++)
     {
-        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
+        for (level = (i == 0 ? FirstBidLevel : FirstAskLevel); level != NULL; level = level->next)
         {
-            qty = (uint32_t) ordernode->order->qty;
-            putc((qty & 0xFF000000) >> 24, stdout);
-            putc((qty & 0x00FF0000) >> 16, stdout);
-            putc((qty & 0x0000FF00) >>  8, stdout);
-            putc((qty & 0x000000FF)      , stdout);
+            for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
+            {
+                qty = (uint32_t) ordernode->order->qty;
+                putc((qty & 0xFF000000) >> 24, stdout);
+                putc((qty & 0x00FF0000) >> 16, stdout);
+                putc((qty & 0x0000FF00) >>  8, stdout);
+                putc((qty & 0x000000FF)      , stdout);
 
-            price = (uint32_t) ordernode->order->price;
-            putc((price & 0xFF000000) >> 24, stdout);
-            putc((price & 0x00FF0000) >> 16, stdout);
-            putc((price & 0x0000FF00) >>  8, stdout);
-            putc((price & 0x000000FF)      , stdout);
+                price = (uint32_t) ordernode->order->price;
+                putc((price & 0xFF000000) >> 24, stdout);
+                putc((price & 0x00FF0000) >> 16, stdout);
+                putc((price & 0x0000FF00) >>  8, stdout);
+                putc((price & 0x000000FF)      , stdout);
+            }
         }
-    }
 
-    for (n = 0; n < 8; n++)
-    {
-        putc('\0', stdout);
-    }
-
-    for (level = FirstAskLevel; level != NULL; level = level->next)
-    {
-        for (ordernode = level->firstordernode; ordernode != NULL; ordernode = ordernode->next)
+        for (n = 0; n < 8; n++)
         {
-            qty = (uint32_t) ordernode->order->qty;
-            putc((qty & 0xFF000000) >> 24, stdout);
-            putc((qty & 0x00FF0000) >> 16, stdout);
-            putc((qty & 0x0000FF00) >>  8, stdout);
-            putc((qty & 0x000000FF)      , stdout);
-
-            price = (uint32_t) ordernode->order->price;
-            putc((price & 0xFF000000) >> 24, stdout);
-            putc((price & 0x00FF0000) >> 16, stdout);
-            putc((price & 0x0000FF00) >>  8, stdout);
-            putc((price & 0x000000FF)      , stdout);
+            putc('\0', stdout);
         }
-    }
-
-    for (n = 0; n < 8; n++)
-    {
-        putc('\0', stdout);
     }
 
     return;
