@@ -7,6 +7,7 @@ import (
     "errors"
     "flag"
     "fmt"
+    "github.com/gorilla/websocket"      // go get github.com/gorilla/websocket
     "io"
     "io/ioutil"
     "net/http"
@@ -15,8 +16,6 @@ import (
     "strconv"
     "strings"
     "sync"
-
-    "github.com/gorilla/websocket"      // go get github.com/gorilla/websocket
 )
 
 type PipesStruct struct {
@@ -201,7 +200,6 @@ func get_response_from_book(command string, venue string, symbol string) string 
     }
 
     Locks[venue][symbol].Lock()
-    defer Locks[venue][symbol].Unlock()
 
     fmt.Fprintf(Books[venue][symbol].stdin, command)
 
@@ -218,6 +216,8 @@ func get_response_from_book(command string, venue string, symbol string) string 
             break
         }
     }
+
+    Locks[venue][symbol].Unlock()
 
     return buffer.String()
 }
@@ -237,7 +237,6 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
     }
 
     Locks[venue][symbol].Lock()
-    defer Locks[venue][symbol].Unlock()
 
     reader := bufio.NewReader(Books[venue][symbol].stdout)
     fmt.Fprintf(Books[venue][symbol].stdin, "ORDERBOOK_BINARY\n")
@@ -334,6 +333,8 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
             break
         }
     }
+
+    Locks[venue][symbol].Unlock()
 
     ts := get_response_from_book("__TIMESTAMP__", venue, symbol)
     ts = strings.Trim(ts, "\n\r\t ")
@@ -859,7 +860,6 @@ func delete_client_from_global_list(info_ptr * WsInfo) {
     // Does nothing if the client isn't in the list
 
     ClientListLock.Lock()
-    defer ClientListLock.Unlock()
 
     for i, client_ptr := range WebSocketClients {
         if client_ptr == info_ptr {
@@ -872,6 +872,7 @@ func delete_client_from_global_list(info_ptr * WsInfo) {
         }
     }
 
+    ClientListLock.Unlock()
     return
 }
 
