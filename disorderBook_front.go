@@ -336,6 +336,9 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
 
     Locks[venue][symbol].Unlock()
 
+    // The above Unlock() has to happen before calling
+    // get_response_from_book() for the timestamp since it also locks.
+
     ts := get_response_from_book("__TIMESTAMP__", venue, symbol)
     ts = strings.Trim(ts, "\n\r\t ")
 
