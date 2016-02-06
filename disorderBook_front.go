@@ -298,10 +298,9 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
     }
 
     if wrote_any_bids {
-        buffer.WriteString("\n  ],\n  \"asks\": [")
-    } else {
-        buffer.WriteString("],\n  \"asks\": [")
+        buffer.WriteString("\n  ")
     }
+    buffer.WriteString("],\n  \"asks\": [")
 
     commaflag = false
     for {
@@ -352,10 +351,9 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
     ts = strings.Trim(ts, "\n\r\t ")
 
     if wrote_any_asks {
-        buffer.WriteString("\n  ],\n  \"ts\": \"")
-    } else {
-        buffer.WriteString("],\n  \"ts\": \"")
+        buffer.WriteString("\n  ")
     }
+    buffer.WriteString("],\n  \"ts\": \"")
     buffer.WriteString(ts)
     buffer.WriteString("\"\n}")
 
