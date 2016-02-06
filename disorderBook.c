@@ -1596,7 +1596,8 @@ int main (int argc, char ** argv)
 
             if (o_and_e->error)
             {
-                printf("{\"ok\": false, \"error\": \"Backend error %d\"}", o_and_e->error);
+                printf("{\"ok\": false, \"error\": \"Backend error %d (account_int = %d, qty = %d, price = %d, direction = %d, orderType = %d\"}",
+                    o_and_e->error, atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]), atoi(tokens[6]));
             } else {
                 print_order(stdout, o_and_e->order);
             }
