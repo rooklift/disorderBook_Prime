@@ -14,7 +14,7 @@ ws_test_executions.py
 ws_test_ticker.py
 
 # Other files:
-disorderBook_8005.bat
+disorderBook_on_8005.bat
 disorderBook_with_auth.bat
 disorderBook_with_excess.bat
 accounts.json
