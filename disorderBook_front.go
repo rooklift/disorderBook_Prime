@@ -248,11 +248,14 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
 
     var buffer bytes.Buffer
 
-    buffer.WriteString(`{"ok": true, "venue": "`)
+    buffer.WriteString("{\n  \"ok\": true,\n  \"venue\": \"")
     buffer.WriteString(venue)
-    buffer.WriteString(`", "symbol": "`)
+    buffer.WriteString("\",\n  \"symbol\": \"")
     buffer.WriteString(symbol)
-    buffer.WriteString(`", "bids": [`)
+    buffer.WriteString("\",\n  \"bids\": [")
+
+    wrote_any_bids := false
+    wrote_any_asks := false
 
     commaflag = false
     for {
@@ -280,20 +283,25 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
 
         if qty != 0 {
             if commaflag {
-                buffer.WriteString(`, `)
+                buffer.WriteString(",")
             }
-            buffer.WriteString(`{"price": `)
+            buffer.WriteString("\n    {\"price\": ")
             buffer.WriteString(strconv.FormatUint(uint64(price), 10))
-            buffer.WriteString(`, "qty": `)
+            buffer.WriteString(", \"qty\": ")
             buffer.WriteString(strconv.FormatUint(uint64(qty), 10))
-            buffer.WriteString(`, "isBuy": true}`)
+            buffer.WriteString(", \"isBuy\": true}")
             commaflag = true
+            wrote_any_bids = true
         } else {
             break
         }
     }
 
-    buffer.WriteString(`], "asks": [`)
+    if wrote_any_bids {
+        buffer.WriteString("\n  ],\n  \"asks\": [")
+    } else {
+        buffer.WriteString("],\n  \"asks\": [")
+    }
 
     commaflag = false
     for {
@@ -321,14 +329,15 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
 
         if qty != 0 {
             if commaflag {
-                buffer.WriteString(`, `)
+                buffer.WriteString(",")
             }
-            buffer.WriteString(`{"price": `)
+            buffer.WriteString("\n    {\"price\": ")
             buffer.WriteString(strconv.FormatUint(uint64(price), 10))
-            buffer.WriteString(`, "qty": `)
+            buffer.WriteString(", \"qty\": ")
             buffer.WriteString(strconv.FormatUint(uint64(qty), 10))
-            buffer.WriteString(`, "isBuy": false}`)
+            buffer.WriteString(", \"isBuy\": false}")
             commaflag = true
+            wrote_any_asks = true
         } else {
             break
         }
@@ -342,9 +351,13 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
     ts := get_response_from_book("__TIMESTAMP__", venue, symbol)
     ts = strings.Trim(ts, "\n\r\t ")
 
-    buffer.WriteString(`], "ts": "`)
+    if wrote_any_asks {
+        buffer.WriteString("\n  ],\n  \"ts\": \"")
+    } else {
+        buffer.WriteString("],\n  \"ts\": \"")
+    }
     buffer.WriteString(ts)
-    buffer.WriteString(`"}`)
+    buffer.WriteString("\"\n}")
 
     return buffer.String()
 }

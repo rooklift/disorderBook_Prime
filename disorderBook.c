@@ -72,23 +72,25 @@
 #define TOO_HIGH_ACCOUNT 3
 
 
-#define EXECUTION_TEMPLATE_1 "{\
-\"ok\": true, \
-\"account\": \"%s\", \
-\"venue\": \"%s\", \
-\"symbol\": \"%s\", \
-\"order\": "
+#define EXECUTION_TEMPLATE_1 "{\n\
+  \"ok\": true,\n\
+  \"account\": \"%s\",\n\
+  \"venue\": \"%s\",\n\
+  \"symbol\": \"%s\",\n\
+  \"order\":\n"
 
-#define EXECUTION_TEMPLATE_2 ", \
-\"standingId\": %d, \
-\"incomingId\": %d, \
-\"price\": %d, \
-\"filled\": %d, \
-\"filledAt\": \"%s\", \
-\"standingComplete\": %s, \
-\"incomingComplete\": %s\
+#define EXECUTION_TEMPLATE_2 ",\n\
+  \"standingId\": %d,\n\
+  \"incomingId\": %d,\n\
+  \"price\": %d,\n\
+  \"filled\": %d,\n\
+  \"filledAt\": \"%s\",\n\
+  \"standingComplete\": %s,\n\
+  \"incomingComplete\": %s\n\
 }"
 
+#define INDENT_2 "  "
+#define INDENT_4 "    "
 
 typedef struct Fill_struct {
     int price;
@@ -501,35 +503,35 @@ int64_t get_depth (LEVEL * level)        // Returns size of this level and all w
 }
 
 
-void print_quote (FILE * outfile)
+void print_quote (FILE * outfile)       // Just hard-codes the indent, meaning executions messages look odd. Meh.
 {
     char buildup[MAXSTRING];
     char part[MAXSTRING];
 
     // Add all the fields that are always present...
-    snprintf(buildup, MAXSTRING, "{\"ok\": true, \"symbol\": \"%s\", \"venue\": \"%s\", \"bidSize\": %" PRId64 ", "
-                                 "\"askSize\": %" PRId64 ", \"bidDepth\": %" PRId64 ", \"askDepth\": %" PRId64 ", \"quoteTime\": \"%s\"",
+    snprintf(buildup, MAXSTRING, "{\n  \"ok\": true,\n  \"symbol\": \"%s\",\n  \"venue\": \"%s\",\n  \"bidSize\": %" PRId64 ",\n"
+                                 "  \"askSize\": %" PRId64 ",\n  \"bidDepth\": %" PRId64 ",\n  \"askDepth\": %" PRId64 ",\n  \"quoteTime\": \"%s\"",
              Symbol, Venue, Quote.bidSize, Quote.askSize, Quote.bidDepth, Quote.askDepth, Quote.quoteTime);
 
     if (Quote.bid >= 0)         // -1 used as a null value
     {
-        snprintf(part, MAXSTRING, ", \"bid\": %d", Quote.bid);
+        snprintf(part, MAXSTRING, ",\n  \"bid\": %d", Quote.bid);
         strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
     }
 
     if (Quote.ask >= 0)         // -1 used as a null value
     {
-        snprintf(part, MAXSTRING, ", \"ask\": %d", Quote.ask);
+        snprintf(part, MAXSTRING, ",\n  \"ask\": %d", Quote.ask);
         strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
     }
 
     if (Quote.lastTrade[0])     // i.e. check the timestamp of the last trade is a non-empty string
     {
-        snprintf(part, MAXSTRING, ", \"lastTrade\": \"%s\", \"lastSize\": %d, \"last\": %d", Quote.lastTrade, Quote.lastSize, Quote.last);
+        snprintf(part, MAXSTRING, ",\n  \"lastTrade\": \"%s\",\n  \"lastSize\": %d,\n  \"last\": %d", Quote.lastTrade, Quote.lastSize, Quote.last);
         strncat(buildup, part, MAXSTRING - strlen(buildup) - 1);
     }
 
-    strncat(buildup, "}", MAXSTRING - strlen(buildup) - 1);
+    strncat(buildup, "\n}", MAXSTRING - strlen(buildup) - 1);
 
     fprintf(outfile, "%s", buildup);
 
@@ -537,28 +539,28 @@ void print_quote (FILE * outfile)
 }
 
 
-void print_fills (FILE * outfile, ORDER * order)
+void print_fills (FILE * outfile, ORDER * order, char * indent1, char * indent2)
 {
     FILLNODE * fillnode;
 
     if (order->firstfillnode == NULL)   // Can do without this block but it's uglier
     {
-        fprintf(outfile, "\"fills\": []");
+        fprintf(outfile, "%s\"fills\": []", indent1);
         return;
     }
 
-    fprintf(outfile, "\"fills\": [\n");
+    fprintf(outfile, "%s\"fills\": [\n", indent1);
 
     fillnode = order->firstfillnode;
 
     while (fillnode != NULL)
     {
         if (fillnode != order->firstfillnode) fprintf(outfile, ",\n");
-        fprintf(outfile, "{\"price\": %d, \"qty\": %d, \"ts\": \"%s\"}", fillnode->fill->price, fillnode->fill->qty, fillnode->fill->ts);
+        fprintf(outfile, "%s{\"price\": %d, \"qty\": %d, \"ts\": \"%s\"}", indent2, fillnode->fill->price, fillnode->fill->qty, fillnode->fill->ts);
         fillnode = fillnode->next;
     }
 
-    fprintf(outfile, "\n]");
+    fprintf(outfile, "\n%s]", indent1);
     return;
 }
 
@@ -582,14 +584,14 @@ void print_order (FILE * outfile, ORDER * order)
 
     fprintf(outfile,
 
-            "{\"ok\": true, \"venue\": \"%s\", \"symbol\": \"%s\", \"direction\": \"%s\", \"originalQty\": %d, \"qty\": %d, "
-            "\"price\": %d, \"orderType\": \"%s\", \"id\": %d, \"account\": \"%s\", \"ts\": \"%s\", \"totalFilled\": %d, \"open\": %s,\n",
+            "{\n  \"ok\": true,\n  \"venue\": \"%s\",\n  \"symbol\": \"%s\",\n  \"direction\": \"%s\",\n  \"originalQty\": %d,\n  \"qty\": %d,"
+            "\n  \"price\": %d,\n  \"orderType\": \"%s\",\n  \"id\": %d,\n  \"account\": \"%s\",\n  \"ts\": \"%s\",\n  \"totalFilled\": %d,\n  \"open\": %s,\n",
 
             Venue, Symbol, order->direction == BUY ? "buy" : "sell", order->originalQty, order->qty,
             order->price, orderType_to_print, order->id, order->account->name, order->ts, order->totalFilled, order->open ? "true" : "false");
 
-    print_fills(outfile, order);
-    fprintf(outfile, "}");
+    print_fills(outfile, order, INDENT_2, INDENT_4);
+    fprintf(outfile, "\n}");
 
     return;
 }
