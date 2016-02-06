@@ -1563,6 +1563,8 @@ int main (int argc, char ** argv)
 
     StartTime = new_timestamp();
 
+    safe_strcpy(Quote.quoteTime, StartTime, SMALLSTRING);
+
     while (1)
     {
         eofcheck = fgets(input, MAXSTRING, stdin);
