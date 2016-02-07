@@ -69,6 +69,10 @@ const (
     NOT_IMPLEMENTED   = `{"ok": false, "error": "Not implemented"}`
     DISABLED          = `{"ok": false, "error": "Disabled or not enabled. (See command line options)"}`
     BAD_ACCOUNT_NAME  = `{"ok": false, "error": "Bad account name (should be alpha_numeric and sane length)"}`
+    BAD_DIRECTION     = `{"ok": false, "error": "Bad direction (should be buy or sell, lowercase)"}`
+    BAD_ORDERTYPE     = `{"ok": false, "error": "Bad (unknown) orderType"}`
+    BAD_PRICE         = `{"ok": false, "error": "Bad (negative) price"}`
+    BAD_QTY           = `{"ok": false, "error": "Bad (non-positive) qty"}`
 )
 
 const (
@@ -623,9 +627,18 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
 
-            if raw_order.Venue == "" || raw_order.Symbol == "" || raw_order.Account == "" || raw_order.Qty == 0 ||
-                    raw_order.Direction == "" || raw_order.OrderType == "" {
+            if raw_order.Venue == "" || raw_order.Symbol == "" || raw_order.Account == "" || raw_order.Direction == "" || raw_order.OrderType == "" {
                 fmt.Fprintf(writer, MISSING_FIELD)
+                return
+            }
+
+            if raw_order.Price < 0 {
+                fmt.Fprintf(writer, BAD_PRICE)
+                return
+            }
+
+            if raw_order.Qty < 1 {
+                fmt.Fprintf(writer, BAD_QTY)
                 return
             }
 
@@ -648,6 +661,9 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                     int_ordertype = LIMIT
                 case "market":
                     int_ordertype = MARKET
+                default:
+                    fmt.Fprintf(writer, BAD_ORDERTYPE)
+                    return
             }
 
             int_direction := 0
@@ -656,9 +672,12 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                     int_direction = SELL
                 case "buy":
                     int_direction = BUY
+                default:
+                    fmt.Fprintf(writer, BAD_DIRECTION)
+                    return
             }
 
-            if AuthMode {       // Do this before the acc_id int is generated
+            if AuthMode {
                 api_key, ok := Auth[raw_order.Account]
                 if api_key != request_api_key || ok == false {
                     fmt.Fprintf(writer, AUTH_FAILURE)
@@ -666,16 +685,17 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 }
             }
 
-            acc_id, ok := AccountInts[raw_order.Account]
-            if !ok {
-                acc_id = len(AccountInts)
-                AccountInts[raw_order.Account] = acc_id
-            }
-
             err = create_book_if_needed(venue, symbol)
             if err != nil {
                 fmt.Fprintf(writer, CREATE_BOOK_FAIL)
                 return
+            }
+
+            // Do the account-ID generation as late as possible so we don't get unused IDs if we return early
+            acc_id, ok := AccountInts[raw_order.Account]
+            if !ok {
+                acc_id = len(AccountInts)
+                AccountInts[raw_order.Account] = acc_id
             }
 
             command := fmt.Sprintf("ORDER %s %d %d %d %d %d", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
