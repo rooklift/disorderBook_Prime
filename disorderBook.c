@@ -1119,16 +1119,14 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
     int id;
     ACCOUNT * accountobject;
 
-    id = next_id(0);
-
     // The o_and_e structure lets us send either an order or an error to the caller...
 
     o_and_e = init_o_and_e();
 
     // Check for too high an order ID, too high an account ID, or silly values...
 
-    if (id >= MAXORDERS)
-    {
+    if (next_id(1) >= MAXORDERS)                // Pass the no-iterate flag to next_id() here
+    {                                           // i.e. don't iterate until we know order succeeds
         o_and_e->error = TOO_MANY_ORDERS;
         return o_and_e;
 
@@ -1150,6 +1148,7 @@ ORDER_AND_ERROR * execute_order (char * account_name, int account_int, int qty, 
 
     // Create order struct, and store a pointer to it in the account...
 
+    id = next_id(0);
     order = init_order(accountobject, qty, price, direction, orderType, id);
     add_order_to_account(order, accountobject);
 
@@ -1596,8 +1595,8 @@ int main (int argc, char ** argv)
 
             if (o_and_e->error)
             {
-                printf("{\"ok\": false, \"error\": \"Backend error %d (account_int = %d, qty = %d, price = %d, direction = %d, orderType = %d\"}",
-                    o_and_e->error, atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]), atoi(tokens[6]));
+                printf("{\"ok\": false, \"error\": \"Backend error %d (account = %s, account_int = %d, qty = %d, price = %d, direction = %d, orderType = %d)\"}",
+                    o_and_e->error, tokens[1], atoi(tokens[2]), atoi(tokens[3]), atoi(tokens[4]), atoi(tokens[5]), atoi(tokens[6]));
             } else {
                 print_order(stdout, o_and_e->order);
             }
