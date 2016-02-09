@@ -356,6 +356,7 @@ char * new_timestamp (void)
 ORDER * init_order (ACCOUNT * account, int qty, int price, int direction, int orderType, int id)
 {
     ORDER * ret;
+    int n;
 
     DebugInfo.inits_of_order++;
 
@@ -381,6 +382,15 @@ ORDER * init_order (ACCOUNT * account, int qty, int price, int direction, int or
         AllOrders = realloc(AllOrders, (CurrentOrderArrayLen + 8192) * sizeof(ORDER *));
         check_ptr_or_quit(AllOrders);
         CurrentOrderArrayLen += 8192;
+
+        // NULLify the new pointers in case gaps open up somehow - we can
+        // verify the order ID doesn't exist... (should be impossible at
+        // time of writing but it's good practice).
+
+        for (n = CurrentOrderArrayLen - 8192; n < CurrentOrderArrayLen; n++)
+        {
+            AllOrders[n] = NULL;
+        }
 
         DebugInfo.reallocs_of_global_order_list++;
     }
@@ -1617,7 +1627,7 @@ int main (int argc, char ** argv)
         {
             id = atoi(tokens[1]);
 
-            if (id < 0 || id > HighestKnownOrder)
+            if (id < 0 || id > HighestKnownOrder || AllOrders[id] == NULL)
             {
                 printf("{\"ok\": false, \"error\": \"No such ID\"}");
             } else {
@@ -1649,7 +1659,7 @@ int main (int argc, char ** argv)
         {
             id = atoi(tokens[1]);
 
-            if (id < 0 || id > HighestKnownOrder)
+            if (id < 0 || id > HighestKnownOrder || AllOrders[id] == NULL)
             {
                 printf("{\"ok\": false, \"error\": \"No such ID\"}");
             } else {
@@ -1672,7 +1682,7 @@ int main (int argc, char ** argv)
         {
             id = atoi(tokens[1]);
 
-            if (id < 0 || id > HighestKnownOrder)
+            if (id < 0 || id > HighestKnownOrder || AllOrders[id] == NULL)
             {
                 printf("ERROR None");
             } else {
