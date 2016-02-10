@@ -1,6 +1,7 @@
 # disorderBook Prime
 
-An implementation of a **[Stockfighter](http://stockfighter.io)** server in C and Go. Written by Stockfighter user Amtiskaw (a.k.a. Fohristiwhirl on GitHub)
+An implementation of a **[Stockfighter](http://stockfighter.io)** server in C and Go<br>
+Written by Stockfighter user Amtiskaw (a.k.a. Fohristiwhirl on GitHub)
 
 ## Usage
 
