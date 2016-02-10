@@ -34,4 +34,4 @@ Thanks to patio11, cite-reader, Medecau, DanielVF, eu90h, rjsamson, rami.
 
 ## Python version
 
-This is a remake of my [earlier server made with Python](https://github.com/fohristiwhirl/disorderCook), which is slower.
+This is a remake of my [earlier server made with Python](https://github.com/fohristiwhirl/disorderBook), which is slower.
