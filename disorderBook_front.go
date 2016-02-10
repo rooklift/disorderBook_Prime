@@ -7,7 +7,6 @@ import (
     "errors"
     "flag"
     "fmt"
-    "github.com/gorilla/websocket"      // go get github.com/gorilla/websocket
     "io"
     "io/ioutil"
     "net/http"
@@ -16,6 +15,8 @@ import (
     "strconv"
     "strings"
     "sync"
+
+    "github.com/gorilla/websocket"      // go get github.com/gorilla/websocket
 )
 
 type PipesStruct struct {
@@ -938,7 +939,11 @@ func load_auth() {
         os.Exit(1)
     }
 
-    m := di.(map[string]interface{})
+    m, ok := di.(map[string]interface{})
+    if !ok {
+        fmt.Printf("Accounts file didn't seem to be the correct format.\n\n")
+        os.Exit(1)
+    }
 
     for acc, apikey := range m {
         switch apikey.(type) {
