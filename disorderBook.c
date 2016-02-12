@@ -329,6 +329,8 @@ char * new_timestamp (void)
     char * timestamp;
     time_t t;
     struct tm * ti;
+    static struct tm last_time = {0};
+    static int fake_micro = 0;
 
     timestamp = malloc(SMALLSTRING);
     check_ptr_or_quit(timestamp);
@@ -344,7 +346,23 @@ char * new_timestamp (void)
 
     if (ti)
     {
-        snprintf(timestamp, SMALLSTRING, "%d-%02d-%02dT%02d:%02d:%02d.0000Z", ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday, ti->tm_hour, ti->tm_min, ti->tm_sec);
+        // We fake microseconds by using the number of times the
+        // function has been called this second as "microseconds",
+        // so first check if second has rolled over...
+        if (last_time.tm_year == ti->tm_year &&
+            last_time.tm_mon  == ti->tm_mon  &&
+            last_time.tm_mday == ti->tm_mday &&
+            last_time.tm_hour == ti->tm_hour &&
+            last_time.tm_min  == ti->tm_min  &&
+            last_time.tm_sec  == ti->tm_sec)
+        {
+            fake_micro += 1;
+        } else {
+            fake_micro = 0;
+            last_time = *ti;
+        }
+        snprintf(timestamp, SMALLSTRING, "%d-%02d-%02dT%02d:%02d:%02d.%06dZ",
+                 ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday, ti->tm_hour, ti->tm_min, ti->tm_sec, fake_micro);
     } else {
         snprintf(timestamp, SMALLSTRING, "Unknown");
     }
