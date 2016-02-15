@@ -112,24 +112,33 @@ const FRONTPAGE = `<html>
     "WOAH THATS FAST" -- DanielVF
 </pre></body></html>`
 
-// --------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------
 
+// The following globals are unsafe -- could be touched by multiple goroutines (e.g. web handlers):
+
+var Locks = make(map[string]map[string]*sync.Mutex)     // Annoyingly, the map of backend mutexes is itself unsafe
 var Books = make(map[string]map[string]*PipesStruct)
-var Locks = make(map[string]map[string]*sync.Mutex)
-var AccountInts = make(map[string]int)
-var Auth = make(map[string]string)
-
-var AuthMode = false
 var BookCount = 0
+var AccountInts = make(map[string]int)
+var WebSocketClients = make([]*WsInfo, 0)
+
+// The following are mutexes for the above:
+
+var Books_Locks_Count_MUTEX sync.RWMutex
+var AccountInts_MUTEX sync.RWMutex
+var WebSocketClients_MUTEX sync.RWMutex
+
+// The following globals are safe because they are only written to before the various goroutines start:
 
 var Options OptionsStruct
+var AuthMode = false
+var Auth = make(map[string]string)
 
-var WebSocketClients = make([]*WsInfo, 0)
-var ClientListLock sync.Mutex
+// The following globals are safe because they are never "written" to as such:
 
 var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 
-// --------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------
 
 func bad_name(name string) bool {
 
@@ -154,6 +163,16 @@ func create_book_if_needed(venue string, symbol string) error {
         return errors.New("Bad name for a book!")
     }
 
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    if Books[venue] != nil && Books[venue][symbol] != nil {
+        Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock (1) before early return
+        return nil
+    }
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock (2)
+
+    Books_Locks_Count_MUTEX.Lock()      // <======================================== LOCK for __rw__ with deferred UNLOCK
+    defer Books_Locks_Count_MUTEX.Unlock()
+
     if Books[venue] == nil {
 
         if BookCount >= Options.MaxBooks {
@@ -164,51 +183,61 @@ func create_book_if_needed(venue string, symbol string) error {
         Locks[venue] = make(map[string]*sync.Mutex)
     }
 
-    if Books[venue][symbol] == nil {
-
-        if BookCount >= Options.MaxBooks {
-            return errors.New("Too many books!")
-        }
-
-        command := exec.Command("./disorderBook.exe", venue, symbol)
-        i_pipe, _ := command.StdinPipe()
-        o_pipe, _ := command.StdoutPipe()
-        e_pipe, _ := command.StderrPipe()
-
-        // Should maybe handle errors from the above.
-
-        new_pipes_struct := PipesStruct{i_pipe, o_pipe, e_pipe}
-
-        Books[venue][symbol] = &new_pipes_struct
-        Locks[venue][symbol] = new(sync.Mutex)      // new() returns a pointer
-        BookCount++
-        command.Start()
-        go ws_controller(venue, symbol)
+    if BookCount >= Options.MaxBooks {
+        return errors.New("Too many books!")
     }
+
+    command := exec.Command("./disorderBook.exe", venue, symbol)
+    i_pipe, _ := command.StdinPipe()
+    o_pipe, _ := command.StdoutPipe()
+    e_pipe, _ := command.StderrPipe()
+
+    // Should maybe handle errors from the above.
+
+    new_pipes_struct := PipesStruct{i_pipe, o_pipe, e_pipe}
+
+    Books[venue][symbol] = &new_pipes_struct
+    Locks[venue][symbol] = new(sync.Mutex)      // new() returns a pointer
+    BookCount++
+    command.Start()
+    go ws_controller(venue, symbol)
+
     return nil
 }
 
 func get_response_from_book(command string, venue string, symbol string) string {
 
-    v := Books[venue]
-    if v == nil {
-        return UNKNOWN_VENUE
-    }
-
-    s := Books[venue][symbol]
-    if s == nil {
-        return UNKNOWN_SYMBOL
-    }
-
     if len(command) == 0 || command[len(command) - 1] != '\n' {
         command = command + "\n"
     }
 
-    Locks[venue][symbol].Lock()
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    v := Books[venue]
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
 
-    fmt.Fprintf(Books[venue][symbol].stdin, command)
+    if v == nil {
+        return UNKNOWN_VENUE
+    }
 
-    scanner := bufio.NewScanner(Books[venue][symbol].stdout)
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    s := Books[venue][symbol]
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+    if s == nil {
+        return UNKNOWN_SYMBOL
+    }
+
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    backend_mutex := Locks[venue][symbol]
+    backend_stdin := Books[venue][symbol].stdin
+    backend_stdout := Books[venue][symbol].stdout
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+    backend_mutex.Lock()
+
+    fmt.Fprintf(backend_stdin, command)
+
+    scanner := bufio.NewScanner(backend_stdout)
     var buffer bytes.Buffer
 
     for {
@@ -222,7 +251,7 @@ func get_response_from_book(command string, venue string, symbol string) string 
         }
     }
 
-    Locks[venue][symbol].Unlock()
+    backend_mutex.Unlock()
 
     return buffer.String()
 }
@@ -231,20 +260,33 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
 
     // See comments in the C code for how the incoming data is formatted
 
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
     v := Books[venue]
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
     if v == nil {
         return UNKNOWN_VENUE
     }
 
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
     s := Books[venue][symbol]
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
     if s == nil {
         return UNKNOWN_SYMBOL
     }
 
-    Locks[venue][symbol].Lock()
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    backend_mutex := Locks[venue][symbol]
+    backend_stdin := Books[venue][symbol].stdin
+    backend_stdout := Books[venue][symbol].stdout
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
 
-    reader := bufio.NewReader(Books[venue][symbol].stdout)
-    fmt.Fprintf(Books[venue][symbol].stdin, "ORDERBOOK_BINARY\n")
+    backend_mutex.Lock()
+
+    fmt.Fprintf(backend_stdin, "ORDERBOOK_BINARY\n")
+
+    reader := bufio.NewReader(backend_stdout)
 
     var nextbyte byte
     var qty uint32
@@ -347,7 +389,7 @@ func get_binary_orderbook_to_json(venue string, symbol string) string {
         }
     }
 
-    Locks[venue][symbol].Unlock()
+    backend_mutex.Unlock()
 
     // The above Unlock() has to happen before calling
     // get_response_from_book() for the timestamp since it also locks.
@@ -426,11 +468,16 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
     if len(pathlist) == 5 {
         if pathlist[2] == "venues" && pathlist[4] == "heartbeat" {
             venue := pathlist[3]
+
+            Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+
             if Books[venue] == nil {
                 fmt.Fprintf(writer, NO_VENUE_HEART)
             } else {
                 fmt.Fprintf(writer, `{"ok": true, "venue": "%s"}`, venue)
             }
+
+            Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
             return
         }
     }
@@ -451,6 +498,9 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
 
     if list_stocks_flag {
         venue := pathlist[3]
+
+        Books_Locks_Count_MUTEX.RLock()     // <======================================== RLock with deferred RUnlock
+        defer Books_Locks_Count_MUTEX.RUnlock()
 
         if Books[venue] == nil {
             fmt.Fprintf(writer, NO_VENUE_HEART)
@@ -540,11 +590,13 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 }
             }
 
+            AccountInts_MUTEX.Lock()            // <---------------------------------------- LOCK for __rw__
             acc_id, ok := AccountInts[account]
             if !ok {
                 acc_id = len(AccountInts)
                 AccountInts[account] = acc_id
             }
+            AccountInts_MUTEX.Unlock()          // <---------------------------------------- UNLOCK
 
             res := get_response_from_book("STATUSALL " + strconv.Itoa(acc_id), venue, symbol)
             fmt.Fprintf(writer, res)
@@ -693,11 +745,14 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             }
 
             // Do the account-ID generation as late as possible so we don't get unused IDs if we return early
+
+            AccountInts_MUTEX.Lock()            // <---------------------------------------- LOCK for __rw__
             acc_id, ok := AccountInts[raw_order.Account]
             if !ok {
                 acc_id = len(AccountInts)
                 AccountInts[raw_order.Account] = acc_id
             }
+            AccountInts_MUTEX.Unlock()            // <-------------------------------------- UNLOCK
 
             command := fmt.Sprintf("ORDER %s %d %d %d %d %d", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
             res := get_response_from_book(command, venue, symbol)
@@ -736,6 +791,13 @@ backend -- ws_controller() -- that reads these messages and passes them
 on via the channel (only sending to the correct clients).
 */
 
+func append_to_ws_client_list(info_ptr * WsInfo)  {
+    WebSocketClients_MUTEX.Lock()       // <---------------------------------------- LOCK for __rw__
+    WebSocketClients = append(WebSocketClients, info_ptr)
+    fmt.Printf("WebSocket -OPEN- ... Active == %d\n", len(WebSocketClients))
+    WebSocketClients_MUTEX.Unlock()     // <---------------------------------------- UNLOCK
+}
+
 func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
     // http://www.gorillatoolkit.org/pkg/websocket
@@ -764,56 +826,38 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         account = ""
         venue = pathlist[5]
         symbol = pathlist[8]
-
         info = WsInfo{account, venue, symbol, TICKER, message_channel}
-
-        ClientListLock.Lock()
-        WebSocketClients = append(WebSocketClients, &info)
-        ClientListLock.Unlock()
+        append_to_ws_client_list(&info)
 
     //ob/api/ws/:trading_account/venues/:venue/tickertape
     } else if len(pathlist) == 7 && pathlist[4] == "venues" && pathlist[6] == "tickertape" {
         account = ""
         venue = pathlist[5]
         symbol = ""
-
         info = WsInfo{account, venue, symbol, TICKER, message_channel}
-
-        ClientListLock.Lock()
-        WebSocketClients = append(WebSocketClients, &info)
-        ClientListLock.Unlock()
+        append_to_ws_client_list(&info)
 
     //ob/api/ws/:trading_account/venues/:venue/executions/stocks/:symbol
     } else if len(pathlist) == 9 && pathlist[4] == "venues" && pathlist[6] == "executions" && pathlist[7] == "stocks" {
         account = pathlist[3]
         venue = pathlist[5]
         symbol = pathlist[8]
-
         info = WsInfo{account, venue, symbol, EXECUTION, message_channel}
-
-        ClientListLock.Lock()
-        WebSocketClients = append(WebSocketClients, &info)
-        ClientListLock.Unlock()
+        append_to_ws_client_list(&info)
 
     //ob/api/ws/:trading_account/venues/:venue/executions
     } else if len(pathlist) == 7 && pathlist[4] == "venues" && pathlist[6] == "executions" {
         account = pathlist[3]
         venue = pathlist[5]
         symbol = ""
-
         info = WsInfo{account, venue, symbol, EXECUTION, message_channel}
-
-        ClientListLock.Lock()
-        WebSocketClients = append(WebSocketClients, &info)
-        ClientListLock.Unlock()
+        append_to_ws_client_list(&info)
 
     // invalid URL
     } else {
         conn.Close()
         return
     }
-
-    fmt.Printf("WebSocket -OPEN- ... Active == %d\n", len(WebSocketClients))
 
     go ws_null_reader(conn, &info)     // This handles reading and discarding incoming messages
 
@@ -831,7 +875,13 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
 func ws_controller(venue string, symbol string) {
 
-    scanner := bufio.NewScanner(Books[venue][symbol].stderr)
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    backend_stderr := Books[venue][symbol].stderr
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+    // This is the only goroutine reading the stderr. The lock above is needed
+    // just to access the pointer that points at the stderr pipe.
+    scanner := bufio.NewScanner(backend_stderr)
 
     for {
         scanner.Scan()
@@ -865,7 +915,7 @@ func ws_controller(venue string, symbol string) {
             }
         }
 
-        ClientListLock.Lock()
+        WebSocketClients_MUTEX.RLock()      // <---------------------------------------- RLock
 
         for _, client := range WebSocketClients {
 
@@ -887,7 +937,7 @@ func ws_controller(venue string, symbol string) {
             }
         }
 
-        ClientListLock.Unlock()
+        WebSocketClients_MUTEX.RUnlock()    // <---------------------------------------- RUnlock
     }
 }
 
@@ -895,7 +945,7 @@ func delete_client_from_global_list(info_ptr * WsInfo) {
 
     // Does nothing if the client isn't in the list
 
-    ClientListLock.Lock()
+    WebSocketClients_MUTEX.Lock()           // <---------------------------------------- LOCK for __rw__
 
     for i, client_ptr := range WebSocketClients {
         if client_ptr == info_ptr {
@@ -908,7 +958,7 @@ func delete_client_from_global_list(info_ptr * WsInfo) {
         }
     }
 
-    ClientListLock.Unlock()
+    WebSocketClients_MUTEX.Unlock()         // <---------------------------------------- UNLOCK
     return
 }
 
