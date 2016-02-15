@@ -450,6 +450,9 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             fmt.Fprintf(writer, `{"ok": true, "venues": [`)
             name := ""
             commaflag := false
+
+            Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+
             for v := range Books {
                 name = v + " Exchange"
                 if commaflag {
@@ -458,6 +461,9 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 fmt.Fprintf(writer, `{"name": "%s", "state": "open", "venue": "%s"}`, name, v)
                 commaflag = true
             }
+
+            Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
             fmt.Fprintf(writer, "]}")
             return
         }
