@@ -849,6 +849,7 @@ func ws_controller(venue string, symbol string) {
         } else {
             msg_type = 0
             fmt.Println("Unknown WS message type received from backend!")
+            fmt.Println("Headers: ", headers)
         }
 
         var buffer bytes.Buffer
