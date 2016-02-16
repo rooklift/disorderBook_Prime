@@ -14,6 +14,7 @@ import (
     "strconv"
     "strings"
     "sync"
+    "time"
 
     "github.com/gorilla/websocket"      // go get github.com/gorilla/websocket
 )
@@ -318,18 +319,14 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
         }
     }
 
-    // Can't call the book again as it's waiting on us...
-    // ts := get_response_from_book("__TIMESTAMP__", venue, symbol)
-    // ts = strings.Trim(ts, "\n\r\t ")
-
-    ts := "FIXME"
+    ts, _ := time.Now().UTC().MarshalJSON()
 
     if wrote_any_asks {
         buffer.WriteString("\n  ")
     }
-    buffer.WriteString("],\n  \"ts\": \"")
-    buffer.WriteString(ts)
-    buffer.WriteString("\"\n}")
+    buffer.WriteString("],\n  \"ts\": ")
+    buffer.Write(ts)                        // Already has quotes around it
+    buffer.WriteString("\n}")
 
     result_chan <- buffer.Bytes()
     return
