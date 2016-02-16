@@ -62,6 +62,11 @@ type Command struct {
     ResponseChan chan string
 }
 
+type BookInfo struct {
+    Venue string
+    Symbol string
+}
+
 const (
     HEARTBEAT_OK      = `{"ok": true, "error": ""}`
     UNKNOWN_PATH      = `{"ok": false, "error": "Unknown path"}`
@@ -331,21 +336,15 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
     return
 }
 
-func handle_hub_command(msg Command, books map[string]map[string]chan Command) {
-
-    // This function is essentially behind a global lock so had better be fast.
-    // This deals with commands to the hub that aren't simply dealt with by
-    // passing them to a book (for example, the venues list).
-
+func handle_hub_command(msg Command, venue_symbol_map map[string]map[string]bool) {
     var buffer bytes.Buffer
-
     switch msg.HubCommand {
 
         case VENUES_LIST:
 
             commaflag := false
             buffer.WriteString("{\n  \"ok\": true,\n  \"venues\": [")
-            for v := range books {
+            for v := range venue_symbol_map {
                 name := v + " Exchange"
                 if commaflag {
                     buffer.WriteString(",")
@@ -358,7 +357,7 @@ func handle_hub_command(msg Command, books map[string]map[string]chan Command) {
 
         case VENUE_HEARTBEAT:
 
-            if books[msg.Venue] == nil {
+            if venue_symbol_map[msg.Venue] == nil {
                 buffer.WriteString(NO_VENUE_HEART)
             } else {
                 line := fmt.Sprintf(`{"ok": true, "venue": "%s"}`, msg.Venue)
@@ -367,12 +366,12 @@ func handle_hub_command(msg Command, books map[string]map[string]chan Command) {
 
         case STOCK_LIST:
 
-            if books[msg.Venue] == nil {
+            if venue_symbol_map[msg.Venue] == nil {
                 buffer.WriteString(NO_VENUE_HEART)
             } else {
                 commaflag := false
                 buffer.WriteString("{\n  \"ok\": true,\n  \"symbols\": [")
-                for s := range books[msg.Venue] {
+                for s := range venue_symbol_map[msg.Venue] {
                     name := s + " Inc"
                     if commaflag {
                         buffer.WriteString(",")
@@ -393,9 +392,36 @@ func handle_hub_command(msg Command, books map[string]map[string]chan Command) {
     return
 }
 
+func hub_command_handler(hub_command_chan chan Command, hub_update_chan chan BookInfo) {
+
+    // Some commands aren't dealt with by passing them to a book but rather are queries of global state.
+    // This goroutine keeps a copy of the relevant state up-to-date by receiving messages from the hub
+    // about new book creation. It thus is able to deal with the commands for such state.
+
+    venue_symbol_map := make(map[string]map[string]bool)   // bool is adequate here
+
+    for {
+        select {
+            case cmd := <- hub_command_chan:
+                handle_hub_command(cmd, venue_symbol_map)
+
+            case update := <- hub_update_chan:
+                if venue_symbol_map[update.Venue] == nil {
+                    venue_symbol_map[update.Venue] = make(map[string]bool)
+                }
+                venue_symbol_map[update.Venue][update.Symbol] = true
+        }
+    }
+}
+
 func hub()  {
     books := make(map[string]map[string]chan Command)
     bookcount := 0
+
+    hub_command_chan := make(chan Command)
+    hub_update_chan := make(chan BookInfo)
+
+    go hub_command_handler(hub_command_chan, hub_update_chan)
 
     for {
         msg := <- GlobalCommandChan
@@ -403,7 +429,7 @@ func hub()  {
         // Check whether the command was to the hub or to the book...
 
         if msg.HubCommand != 0 {
-            handle_hub_command(msg, books)
+            hub_command_chan <- msg
             continue
         }
 
@@ -443,6 +469,8 @@ func hub()  {
             new_command_chan := make(chan Command)
             books[venue][symbol] = new_command_chan
             bookcount += 1
+
+            hub_update_chan <- BookInfo{venue, symbol}
 
             exec_command := exec.Command("./disorderBook.exe", venue, symbol)
             i_pipe, _ := exec_command.StdinPipe()
