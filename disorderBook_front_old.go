@@ -4,6 +4,7 @@ import (
     "bufio"
     "bytes"
     "encoding/json"
+    "errors"
     "flag"
     "fmt"
     "io"
@@ -19,9 +20,9 @@ import (
 )
 
 type PipesStruct struct {
-    Stdin io.WriteCloser
-    Stdout io.ReadCloser
-    Stderr io.ReadCloser
+    stdin io.WriteCloser
+    stdout io.ReadCloser
+    stderr io.ReadCloser
 }
 
 type OrderStruct struct {
@@ -53,15 +54,6 @@ type WsInfo struct {
     MessageChannel      chan string
 }
 
-type Command struct {
-    Venue string
-    Symbol string
-    Command string
-    HubCommand int
-    CreateIfNeeded bool
-    ResponseChan chan string
-}
-
 const (
     HEARTBEAT_OK      = `{"ok": true, "error": ""}`
     UNKNOWN_PATH      = `{"ok": false, "error": "Unknown path"}`
@@ -74,8 +66,7 @@ const (
     BAD_ORDER         = `{"ok": false, "error": "Couldn't parse order ID"}`
     AUTH_FAILURE      = `{"ok": false, "error": "Unknown account or wrong API key"}`
     NO_VENUE_HEART    = `{"ok": false, "error": "Venue not up (create it by using it)"}`
-    BAD_BOOK_NAME     = `{"ok": false, "error": "Couldn't create book! Bad name for a book!"}`
-    TOO_MANY_BOOKS    = `{"ok": false, "error": "Couldn't create book! Too many books!"}`
+    CREATE_BOOK_FAIL  = `{"ok": false, "error": "Couldn't create book! Either: bad name, or too many books exist"}`
     NOT_IMPLEMENTED   = `{"ok": false, "error": "Not implemented"}`
     DISABLED          = `{"ok": false, "error": "Disabled or not enabled. (See command line options)"}`
     BAD_ACCOUNT_NAME  = `{"ok": false, "error": "Bad account name (should be alpha_numeric and sane length)"}`
@@ -83,13 +74,6 @@ const (
     BAD_ORDERTYPE     = `{"ok": false, "error": "Bad (unknown) orderType"}`
     BAD_PRICE         = `{"ok": false, "error": "Bad (negative) price"}`
     BAD_QTY           = `{"ok": false, "error": "Bad (non-positive) qty"}`
-    MYSTERY_HUB_CMD   = `{"ok": false, "error": "Hub received unknown hub command"}`
-)
-
-const (
-    VENUES_LIST = 1
-    VENUE_HEARTBEAT = 2
-    STOCK_LIST = 3
 )
 
 const (
@@ -132,11 +116,15 @@ const FRONTPAGE = `<html>
 
 // The following globals are unsafe -- could be touched by multiple goroutines (e.g. web handlers):
 
+var Locks = make(map[string]map[string]*sync.Mutex)     // Annoyingly, the map of backend mutexes is itself unsafe
+var Books = make(map[string]map[string]*PipesStruct)
+var BookCount = 0
 var AccountInts = make(map[string]int)
 var WebSocketClients = make([]*WsInfo, 0)
 
 // The following are mutexes for the above:
 
+var Books_Locks_Count_MUTEX sync.RWMutex
 var AccountInts_MUTEX sync.RWMutex
 var WebSocketClients_MUTEX sync.RWMutex
 
@@ -149,7 +137,6 @@ var Auth = make(map[string]string)
 // The following globals are safe because they are never "written" to as such:
 
 var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
-var GlobalCommandChan = make(chan Command)
 
 // -------------------------------------------------------------------------------------------------------
 
@@ -170,46 +157,134 @@ func bad_name(name string) bool {
     return false
 }
 
-func controller(venue string, symbol string, pipes PipesStruct, command_chan chan Command)  {
+func create_book_if_needed(venue string, symbol string) error {
 
-    // This goroutine controls the stdout and stdin for a single backend.
-    // (stderr (for WebSockets) is handled by a different goroutine.)
-
-    for {
-        msg := <- command_chan
-
-        command := msg.Command
-
-        if len(command) == 0 || command[len(command) - 1] != '\n' {
-            command = command + "\n"
-        }
-
-        fmt.Fprintf(pipes.Stdin, command)
-
-        if command == "ORDERBOOK_BINARY\n" {      // This is a special case since the response is binary
-            handle_binary_orderbook_response(pipes.Stdout, msg.Venue, msg.Symbol, msg.ResponseChan)
-            continue
-        }
-
-        scanner := bufio.NewScanner(pipes.Stdout)
-        var buffer bytes.Buffer
-
-        for {
-            scanner.Scan()
-            str_piece := scanner.Text()
-            if str_piece != "END" {
-                buffer.WriteString(str_piece)
-                buffer.WriteByte('\n')
-            } else {
-                break
-            }
-        }
-
-        msg.ResponseChan <- buffer.String()
+    if bad_name(venue) || bad_name(symbol) {
+        return errors.New("Bad name for a book!")
     }
+
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    if Books[venue] != nil && Books[venue][symbol] != nil {
+        Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock (1) before early return
+        return nil
+    }
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock (2)
+
+    Books_Locks_Count_MUTEX.Lock()      // <======================================== LOCK for __rw__ with deferred UNLOCK
+    defer Books_Locks_Count_MUTEX.Unlock()
+
+    if Books[venue] == nil {
+
+        if BookCount >= Options.MaxBooks {
+            return errors.New("Too many books!")
+        }
+
+        Books[venue] = make(map[string]*PipesStruct)
+        Locks[venue] = make(map[string]*sync.Mutex)
+    }
+
+    if BookCount >= Options.MaxBooks {
+        return errors.New("Too many books!")
+    }
+
+    command := exec.Command("./disorderBook.exe", venue, symbol)
+    i_pipe, _ := command.StdinPipe()
+    o_pipe, _ := command.StdoutPipe()
+    e_pipe, _ := command.StderrPipe()
+
+    // Should maybe handle errors from the above.
+
+    new_pipes_struct := PipesStruct{i_pipe, o_pipe, e_pipe}
+
+    Books[venue][symbol] = &new_pipes_struct
+    Locks[venue][symbol] = new(sync.Mutex)      // new() returns a pointer
+    BookCount++
+    command.Start()
+    go ws_controller(venue, symbol, e_pipe)
+
+    return nil
 }
 
-func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string, symbol string, result_chan chan string) {
+func get_response_from_book(command string, venue string, symbol string) string {
+
+    if len(command) == 0 || command[len(command) - 1] != '\n' {
+        command = command + "\n"
+    }
+
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    v := Books[venue]
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+    if v == nil {
+        return UNKNOWN_VENUE
+    }
+
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    s := Books[venue][symbol]
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+    if s == nil {
+        return UNKNOWN_SYMBOL
+    }
+
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    backend_mutex := Locks[venue][symbol]
+    backend_stdin := Books[venue][symbol].stdin
+    backend_stdout := Books[venue][symbol].stdout
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+    backend_mutex.Lock()
+
+    fmt.Fprintf(backend_stdin, command)
+
+    scanner := bufio.NewScanner(backend_stdout)
+    var buffer bytes.Buffer
+
+    for {
+        scanner.Scan()
+        str_piece := scanner.Text()
+        if str_piece != "END" {
+            buffer.WriteString(str_piece)
+            buffer.WriteByte('\n')
+        } else {
+            break
+        }
+    }
+
+    backend_mutex.Unlock()
+
+    return buffer.String()
+}
+
+func get_binary_orderbook_to_json(venue string, symbol string) string {
+
+    // See comments in the C code for how the incoming data is formatted
+
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    v := Books[venue]
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+    if v == nil {
+        return UNKNOWN_VENUE
+    }
+
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    s := Books[venue][symbol]
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+    if s == nil {
+        return UNKNOWN_SYMBOL
+    }
+
+    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+    backend_mutex := Locks[venue][symbol]
+    backend_stdin := Books[venue][symbol].stdin
+    backend_stdout := Books[venue][symbol].stdout
+    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+    backend_mutex.Lock()
+
+    fmt.Fprintf(backend_stdin, "ORDERBOOK_BINARY\n")
 
     reader := bufio.NewReader(backend_stdout)
 
@@ -314,11 +389,13 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
         }
     }
 
-    // Can't call the book again as it's waiting on us...
-    // ts := get_response_from_book("__TIMESTAMP__", venue, symbol)
-    // ts = strings.Trim(ts, "\n\r\t ")
+    backend_mutex.Unlock()
 
-    ts := "FIXME"
+    // The above Unlock() has to happen before calling
+    // get_response_from_book() for the timestamp since it also locks.
+
+    ts := get_response_from_book("__TIMESTAMP__", venue, symbol)
+    ts = strings.Trim(ts, "\n\r\t ")
 
     if wrote_any_asks {
         buffer.WriteString("\n  ")
@@ -327,155 +404,7 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
     buffer.WriteString(ts)
     buffer.WriteString("\"\n}")
 
-    result_chan <- buffer.String()
-    return
-}
-
-func handle_hub_command(msg Command, books map[string]map[string]chan Command) {
-
-    // This function is essentially behind a global lock so had better be fast.
-    // This deals with commands to the hub that aren't simply dealt with by
-    // passing them to a book (for example, the venues list).
-
-    var buffer bytes.Buffer
-
-    switch msg.HubCommand {
-
-        case VENUES_LIST:
-
-            commaflag := false
-            buffer.WriteString("{\n  \"ok\": true,\n  \"venues\": [")
-            for v := range books {
-                name := v + " Exchange"
-                if commaflag {
-                    buffer.WriteString(",")
-                }
-                line := fmt.Sprintf("\n    {\"name\": \"%s\", \"state\": \"open\", \"venue\": \"%s\"}", name, v)
-                buffer.WriteString(line)
-                commaflag = true
-            }
-            buffer.WriteString("\n  ]\n}")
-
-        case VENUE_HEARTBEAT:
-
-            if books[msg.Venue] == nil {
-                buffer.WriteString(NO_VENUE_HEART)
-            } else {
-                line := fmt.Sprintf(`{"ok": true, "venue": "%s"}`, msg.Venue)
-                buffer.WriteString(line)
-            }
-
-        case STOCK_LIST:
-
-            if books[msg.Venue] == nil {
-                buffer.WriteString(NO_VENUE_HEART)
-            } else {
-                commaflag := false
-                buffer.WriteString("{\n  \"ok\": true,\n  \"symbols\": [")
-                for s := range books[msg.Venue] {
-                    name := s + " Inc"
-                    if commaflag {
-                        buffer.WriteString(",")
-                    }
-                    line := fmt.Sprintf("\n    {\"name\": \"%s\", \"symbol\": \"%s\"}", name, s)
-                    buffer.WriteString(line)
-                    commaflag = true
-                }
-                buffer.WriteString("\n  ]\n}")
-            }
-
-        default:
-
-            buffer.WriteString(MYSTERY_HUB_CMD)
-    }
-
-    msg.ResponseChan <- buffer.String()
-    return
-}
-
-func hub()  {
-    books := make(map[string]map[string]chan Command)
-    bookcount := 0
-
-    for {
-        msg := <- GlobalCommandChan
-
-        // Check whether the command was to the hub or to the book...
-
-        if msg.HubCommand != 0 {
-            handle_hub_command(msg, books)
-            continue
-        }
-
-        // Command was a real command to a book...
-
-        venue, symbol := msg.Venue, msg.Symbol
-
-        if msg.CreateIfNeeded == false {
-            if books[venue] == nil {
-                msg.ResponseChan <- UNKNOWN_VENUE
-                continue
-            }
-            if books[venue][symbol] == nil {
-                msg.ResponseChan <- UNKNOWN_SYMBOL
-                continue
-            }
-        }
-
-        // Either the book exists or we need to create it...
-
-        if books[venue] == nil || books[venue][symbol] == nil {     // Short circuits if no venue
-
-            if bad_name(venue) || bad_name(symbol) {
-                msg.ResponseChan <- BAD_BOOK_NAME
-                continue
-            }
-
-            if bookcount >= Options.MaxBooks {
-                msg.ResponseChan <- TOO_MANY_BOOKS
-                continue
-            }
-
-            if books[venue] == nil {
-                books[venue] = make(map[string]chan Command)
-            }
-
-            new_command_chan := make(chan Command)
-            books[venue][symbol] = new_command_chan
-            bookcount += 1
-
-            exec_command := exec.Command("./disorderBook.exe", venue, symbol)
-            i_pipe, _ := exec_command.StdinPipe()
-            o_pipe, _ := exec_command.StdoutPipe()
-            e_pipe, _ := exec_command.StderrPipe()
-
-            // Should maybe handle errors from the above.
-
-            new_pipes_struct := PipesStruct{i_pipe, o_pipe, e_pipe}
-
-            exec_command.Start()
-            go ws_relayer(venue, symbol, e_pipe)
-            go controller(venue, symbol, new_pipes_struct, new_command_chan)
-            fmt.Printf("Creating %s %s\n", venue, symbol)
-        }
-
-        // The book exists...
-
-        books[venue][symbol] <- msg
-    }
-}
-
-func relay(msg Command, writer http.ResponseWriter) {
-
-    // Send the message to the hub, read the response via a channel,
-    // and then send that response to the http client.
-
-    result_chan := make(chan string)
-    msg.ResponseChan = result_chan
-    GlobalCommandChan <- msg
-    res := <- result_chan
-    fmt.Fprintf(writer, res)
-    return
+    return buffer.String()
 }
 
 func main_handler(writer http.ResponseWriter, request * http.Request) {
@@ -490,7 +419,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
     path_clean := strings.Trim(request.URL.Path, "\n\r\t /")
     pathlist := strings.Split(path_clean, "/")
 
-    // Welcome message for "/" ..................................................................
+    // Welcome message for "/"
 
     if len(pathlist) == 1 && pathlist[0] == "" {      // The split behaviour means len is never 0
         writer.Header().Set("Content-Type", "text/html")
@@ -498,14 +427,14 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
         return
     }
 
-    // Check for obvious path fails..............................................................
+    // Check for obvious path fails...
 
     if len(pathlist) < 2 || pathlist[0] != "ob" || pathlist[1] != "api" {
         fmt.Fprintf(writer, UNKNOWN_PATH)
         return
     }
 
-    // General heartbeat.........................................................................
+    // General heartbeat...
 
     if len(pathlist) == 3 {
         if pathlist[2] == "heartbeat" {
@@ -514,35 +443,52 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
         }
     }
 
-    // Venues list...............................................................................
+    // Venues list...
 
     if len(pathlist) == 3 {
         if pathlist[2] == "venues" {
+            fmt.Fprintf(writer, `{"ok": true, "venues": [`)
+            name := ""
+            commaflag := false
 
-            msg := Command{
-                HubCommand: VENUES_LIST,
+            Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+
+            for v := range Books {
+                name = v + " Exchange"
+                if commaflag {
+                    fmt.Fprintf(writer, ", ")
+                }
+                fmt.Fprintf(writer, `{"name": "%s", "state": "open", "venue": "%s"}`, name, v)
+                commaflag = true
             }
-            relay(msg, writer)
+
+            Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
+
+            fmt.Fprintf(writer, "]}")
             return
         }
     }
 
-    // Venue heartbeat...........................................................................
+    // Venue heartbeat...
 
     if len(pathlist) == 5 {
         if pathlist[2] == "venues" && pathlist[4] == "heartbeat" {
             venue := pathlist[3]
 
-            msg := Command{
-                Venue: venue,
-                HubCommand: VENUE_HEARTBEAT,
+            Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
+
+            if Books[venue] == nil {
+                fmt.Fprintf(writer, NO_VENUE_HEART)
+            } else {
+                fmt.Fprintf(writer, `{"ok": true, "venue": "%s"}`, venue)
             }
-            relay(msg, writer)
+
+            Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
             return
         }
     }
 
-    // Stocks on an exchange.....................................................................
+    // Stocks on an exchange...
 
     list_stocks_flag := false
 
@@ -559,51 +505,68 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
     if list_stocks_flag {
         venue := pathlist[3]
 
-        msg := Command{
-            Venue: venue,
-            HubCommand: STOCK_LIST,
+        Books_Locks_Count_MUTEX.RLock()     // <======================================== RLock with deferred RUnlock
+        defer Books_Locks_Count_MUTEX.RUnlock()
+
+        if Books[venue] == nil {
+            fmt.Fprintf(writer, NO_VENUE_HEART)
+            return
         }
-        relay(msg, writer)
+
+        fmt.Fprintf(writer, `{"ok": true, "symbols": [`)
+        name := ""
+        commaflag := false
+        for s := range Books[venue] {
+            name = s + " Inc"
+            if commaflag {
+                fmt.Fprintf(writer, ", ")
+            }
+            fmt.Fprintf(writer, `{"name": "%s", "symbol": "%s"}`, name, s)
+            commaflag = true
+        }
+        fmt.Fprintf(writer, "]}")
         return
     }
 
-    // Quote.....................................................................................
+    // Quote...
 
     if len(pathlist) == 7 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "quote" {
             venue := pathlist[3]
             symbol := pathlist[5]
 
-            msg := Command{
-                Venue: venue,
-                Symbol: symbol,
-                Command: "QUOTE",
-                CreateIfNeeded: true,
+            err := create_book_if_needed(venue, symbol)
+            if err != nil {
+                fmt.Fprintf(writer, CREATE_BOOK_FAIL)
+                return
             }
-            relay(msg, writer)
+
+            res := get_response_from_book("QUOTE", venue, symbol)
+            fmt.Fprintf(writer, res)
             return
         }
     }
 
-    // Orderbook.................................................................................
+    // Orderbook...
 
     if len(pathlist) == 6 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" {
             venue := pathlist[3]
             symbol := pathlist[5]
 
-            msg := Command{
-                Venue: venue,
-                Symbol: symbol,
-                Command: "ORDERBOOK_BINARY",
-                CreateIfNeeded: true,
+            err := create_book_if_needed(venue, symbol)
+            if err != nil {
+                fmt.Fprintf(writer, CREATE_BOOK_FAIL)
+                return
             }
-            relay(msg, writer)
+
+            res := get_binary_orderbook_to_json(venue, symbol)
+            fmt.Fprintf(writer, res)
             return
         }
     }
 
-    // All orders on a venue.....................................................................
+    // All orders on a venue...
 
     if len(pathlist) == 7 {
         if pathlist[2] == "venues" && pathlist[4] == "accounts" && pathlist[6] == "orders" {
@@ -612,7 +575,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
         }
     }
 
-    // All orders on a venue (specific stock)....................................................
+    // All orders on a venue (specific stock)...
 
     if len(pathlist) == 9 {
         if pathlist[2] == "venues" && pathlist[4] == "accounts" && pathlist[6] == "stocks" && pathlist[8] == "orders" {
@@ -633,26 +596,21 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 }
             }
 
-            AccountInts_MUTEX.Lock()
+            AccountInts_MUTEX.Lock()            // <---------------------------------------- LOCK for __rw__
             acc_id, ok := AccountInts[account]
             if !ok {
                 acc_id = len(AccountInts)
                 AccountInts[account] = acc_id
             }
-            AccountInts_MUTEX.Unlock()
+            AccountInts_MUTEX.Unlock()          // <---------------------------------------- UNLOCK
 
-            msg := Command{
-                Venue: venue,
-                Symbol: symbol,
-                Command: "STATUSALL " + strconv.Itoa(acc_id),
-                CreateIfNeeded: true,
-            }
-            relay(msg, writer)
+            res := get_response_from_book("STATUSALL " + strconv.Itoa(acc_id), venue, symbol)
+            fmt.Fprintf(writer, res)
             return
         }
     }
 
-    // Status and cancel.........................................................................
+    // Status and cancel...
 
     if len(pathlist) == 8 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" {
@@ -665,22 +623,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 return
             }
 
-            // In this instance, the web-handler needs to contact the book for info and NOT
-            // send that on to the client. Once we have the info we can make the real request.
-
-            command := "__ACC_FROM_ID__ " + strconv.Itoa(id)
-            result_chan := make(chan string)
-
-            msg := Command{
-                ResponseChan: result_chan,
-                Venue: venue,
-                Symbol: symbol,
-                Command: command,
-                CreateIfNeeded: false,
-            }
-            GlobalCommandChan <- msg
-            res1 := <- result_chan
-
+            res1 := get_response_from_book("__ACC_FROM_ID__ " + strconv.Itoa(id), venue, symbol)
             res1 = strings.Trim(res1, " \t\n\r")
             reply_list := strings.Split(res1, " ")
             err_string, account := reply_list[0], reply_list[1]
@@ -697,20 +640,14 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 }
             }
 
+            var command string
             if request.Method == "DELETE" {
                 command = fmt.Sprintf("CANCEL %d", id)
             } else {
                 command = fmt.Sprintf("STATUS %d", id)
             }
-
-            msg = Command{
-                Venue: venue,
-                Symbol: symbol,
-                Command: command,
-                CreateIfNeeded: false,
-            }
-
-            relay(msg, writer)
+            res2 := get_response_from_book(command, venue, symbol)
+            fmt.Fprintf(writer, res2)
             return
         }
     }
@@ -807,26 +744,25 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 }
             }
 
+            err = create_book_if_needed(venue, symbol)
+            if err != nil {
+                fmt.Fprintf(writer, CREATE_BOOK_FAIL)
+                return
+            }
+
             // Do the account-ID generation as late as possible so we don't get unused IDs if we return early
 
-            AccountInts_MUTEX.Lock()
+            AccountInts_MUTEX.Lock()            // <---------------------------------------- LOCK for __rw__
             acc_id, ok := AccountInts[raw_order.Account]
             if !ok {
                 acc_id = len(AccountInts)
                 AccountInts[raw_order.Account] = acc_id
             }
-            AccountInts_MUTEX.Unlock()
+            AccountInts_MUTEX.Unlock()          // <---------------------------------------- UNLOCK
 
             command := fmt.Sprintf("ORDER %s %d %d %d %d %d", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
-
-            msg := Command{
-                Venue: venue,
-                Symbol: symbol,
-                Command: command,
-                CreateIfNeeded: true,
-            }
-
-            relay(msg, writer)
+            res := get_response_from_book(command, venue, symbol)
+            fmt.Fprintf(writer, res)
             return
         }
     }
@@ -838,16 +774,9 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             venue := pathlist[3]
             symbol := pathlist[5]
 
+            res := get_response_from_book("__SCORES__", venue, symbol)
             writer.Header().Set("Content-Type", "text/html")
-
-            msg := Command{
-                Venue: venue,
-                Symbol: symbol,
-                Command: "__SCORES__",
-                CreateIfNeeded: false,
-            }
-
-            relay(msg, writer)
+            fmt.Fprintf(writer, res)
             return
         }
     }
@@ -864,8 +793,8 @@ in a global struct, storing account, venue, and symbol (some of which
 are optional). It also stores a channel used for communication.
 
 Each C backend sends messages to stderr. There is one goroutine per
-backend -- ws_relayer() -- that reads these messages and passes them
-on via the channels (only sending to the correct clients).
+backend -- ws_controller() -- that reads these messages and passes them
+on via the channel (only sending to the correct clients).
 */
 
 func ws_handler(writer http.ResponseWriter, request * http.Request) {
@@ -943,7 +872,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
 // See comments above for WebSocket strategy.
 
-func ws_relayer(venue string, symbol string, backend_stderr io.ReadCloser) {
+func ws_controller(venue string, symbol string, backend_stderr io.ReadCloser) {
 
     scanner := bufio.NewScanner(backend_stderr)
 
@@ -979,7 +908,7 @@ func ws_relayer(venue string, symbol string, backend_stderr io.ReadCloser) {
             }
         }
 
-        WebSocketClients_MUTEX.RLock()
+        WebSocketClients_MUTEX.RLock()      // <---------------------------------------- RLock
 
         for _, client := range WebSocketClients {
 
@@ -1001,26 +930,22 @@ func ws_relayer(venue string, symbol string, backend_stderr io.ReadCloser) {
             }
         }
 
-        WebSocketClients_MUTEX.RUnlock()
+        WebSocketClients_MUTEX.RUnlock()    // <---------------------------------------- RUnlock
     }
 }
 
 func append_to_ws_client_list(info_ptr * WsInfo)  {
-
-    WebSocketClients_MUTEX.Lock()
-    defer WebSocketClients_MUTEX.Unlock()
-
+    WebSocketClients_MUTEX.Lock()       // <---------------------------------------- LOCK for __rw__
     WebSocketClients = append(WebSocketClients, info_ptr)
     fmt.Printf("WebSocket -OPEN- ... Active == %d\n", len(WebSocketClients))
-    return
+    WebSocketClients_MUTEX.Unlock()     // <---------------------------------------- UNLOCK
 }
 
 func delete_client_from_global_list(info_ptr * WsInfo) {
 
     // Does nothing if the client isn't in the list
 
-    WebSocketClients_MUTEX.Lock()
-    defer WebSocketClients_MUTEX.Unlock()
+    WebSocketClients_MUTEX.Lock()           // <---------------------------------------- LOCK for __rw__
 
     for i, client_ptr := range WebSocketClients {
         if client_ptr == info_ptr {
@@ -1032,6 +957,8 @@ func delete_client_from_global_list(info_ptr * WsInfo) {
             break
         }
     }
+
+    WebSocketClients_MUTEX.Unlock()         // <---------------------------------------- UNLOCK
     return
 }
 
@@ -1097,6 +1024,8 @@ func main() {
                            DefaultSymbol : *defaultsymbolPtr,
                                   Excess : *excessPtr}
 
+    create_book_if_needed(Options.DefaultVenue, Options.DefaultSymbol)
+
     fmt.Printf("\ndisorderBook (C+Go version) starting up on port %d\n", Options.Port)
 
     if Options.AccountFilename != "" {
@@ -1105,20 +1034,6 @@ func main() {
     } else {
         fmt.Printf("\n-----> Warning: running WITHOUT AUTHENTICATION! <-----\n\n")
     }
-
-    go hub()
-
-    // Create the default venue...
-    result_chan := make(chan string)
-    msg := Command{
-        ResponseChan: result_chan,
-        Venue: Options.DefaultVenue,
-        Symbol: Options.DefaultSymbol,
-        CreateIfNeeded: true,
-        Command: "THIS_DOES_NOT_MATTER",
-    }
-    GlobalCommandChan <- msg
-    <- result_chan              // Need to read a result to prevent deadlock
 
     server_string := fmt.Sprintf("127.0.0.1:%d", Options.Port)
 
