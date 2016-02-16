@@ -409,15 +409,15 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             GlobalCommandChan <- msg
             res1 := <- result_chan
 
+            // If the book didn't exist we will receive one of these replies...
             if bytes.Equal(res1, UNKNOWN_VENUE) || bytes.Equal(res1, UNKNOWN_SYMBOL) {
                 writer.Write(STATUS_ON_UNKNOWN)
                 return
             }
 
-            sres1 := string(res1)
-            sres1 = strings.Trim(sres1, " \t\n\r")
-            reply_list := strings.Split(sres1, " ")
-            err_string, account := reply_list[0], reply_list[1]
+            res1 = bytes.Trim(res1, " \t\n\r")
+            reply_list := bytes.Split(res1, []byte(" "))
+            err_string, account := string(reply_list[0]), string(reply_list[1])
 
             if err_string == "ERROR" {
                 writer.Write(UNKNOWN_ORDER)
