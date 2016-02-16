@@ -17,5 +17,4 @@ ws_test_ticker.py
 disorderBook_on_8005.bat
 disorderBook_with_auth.bat
 disorderBook_with_excess.bat
-deprecated/
 *.exe
