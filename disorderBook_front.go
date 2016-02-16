@@ -886,7 +886,9 @@ func ws_controller(venue string, symbol string) {
     Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
 
     // This is the only goroutine reading the stderr. The lock above is needed
-    // just to access the pointer that points at the stderr pipe.
+    // just to access the pointer that points at the stderr pipe. FIXME: could
+    // just pass this in as an argument when starting this goroutine.
+    
     scanner := bufio.NewScanner(backend_stderr)
 
     for {
