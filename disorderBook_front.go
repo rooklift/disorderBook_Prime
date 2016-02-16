@@ -157,348 +157,52 @@ var GlobalCommandChan = make(chan Command)
 
 // -------------------------------------------------------------------------------------------------------
 
-func bad_name(name string) bool {
+func main() {
 
-    if len(name) < 1 || len(name) > 20 {
-        return true
+    maxbooksPtr         := flag.Int("maxbooks", 100, "Maximum number of books")
+    portPtr             := flag.Int("port", 8000, "Port for web API and WebSockets")
+    accountfilenamePtr  := flag.String("accounts", "", "Accounts file for authentication")
+    defaultvenuePtr     := flag.String("venue", "TESTEX", "Default venue")
+    defaultsymbolPtr    := flag.String("symbol", "FOOBAR", "Default symbol")
+    excessPtr           := flag.Bool("excess", false, "Enable commands that can return excessive responses")
+
+    flag.Parse()
+
+    Options = OptionsStruct{    MaxBooks : *maxbooksPtr,
+                                    Port : *portPtr,
+                         AccountFilename : *accountfilenamePtr,
+                            DefaultVenue : *defaultvenuePtr,
+                           DefaultSymbol : *defaultsymbolPtr,
+                                  Excess : *excessPtr}
+
+    fmt.Printf("\ndisorderBook (C+Go version) starting up on port %d\n", Options.Port)
+
+    if Options.AccountFilename != "" {
+        load_auth()
+        AuthMode = true
+    } else {
+        fmt.Printf("\n-----> Warning: running WITHOUT AUTHENTICATION! <-----\n\n")
     }
 
-    // Disallow all chars except alphanumeric and underscore...
+    go hub()
 
-    for _, c := range(name) {
-        if c < 48 || (c > 57 && c < 65) || (c > 90 && c < 95) || c == 96 || c > 122 {
-            return true
-        }
-    }
-
-    return false
-}
-
-func controller(venue string, symbol string, pipes PipesStruct, command_chan chan Command)  {
-
-    // This goroutine controls the stdout and stdin for a single backend.
-    // (stderr (for WebSockets) is handled by a different goroutine.)
-
-    for {
-        msg := <- command_chan
-
-        command := msg.Command
-
-        if len(command) == 0 || command[len(command) - 1] != '\n' {
-            command = command + "\n"
-        }
-
-        fmt.Fprintf(pipes.Stdin, command)
-
-        if command == "ORDERBOOK_BINARY\n" {      // This is a special case since the response is binary
-            handle_binary_orderbook_response(pipes.Stdout, msg.Venue, msg.Symbol, msg.ResponseChan)
-            continue
-        }
-
-        scanner := bufio.NewScanner(pipes.Stdout)
-        var buffer bytes.Buffer
-
-        for {
-            scanner.Scan()
-            str_piece := scanner.Bytes()
-            if bytes.Equal(str_piece, []byte("END")) {
-                break
-            } else {
-                buffer.Write(str_piece)
-                buffer.WriteByte('\n')
-            }
-        }
-
-        msg.ResponseChan <- buffer.Bytes()
-    }
-}
-
-func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string, symbol string, result_chan chan []byte) {
-
-    reader := bufio.NewReader(backend_stdout)
-
-    var nextbyte byte
-    var qty uint32
-    var price uint32
-    var commaflag bool
-
-    var buffer bytes.Buffer
-
-    buffer.WriteString("{\n  \"ok\": true,\n  \"venue\": \"")
-    buffer.WriteString(venue)
-    buffer.WriteString("\",\n  \"symbol\": \"")
-    buffer.WriteString(symbol)
-    buffer.WriteString("\",\n  \"bids\": [")
-
-    wrote_any_bids := false
-    wrote_any_asks := false
-
-    commaflag = false
-    for {
-        qty = 0
-
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 24
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 16
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 8
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte)
-
-        price = 0
-
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 24
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 16
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 8
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte)
-
-        if qty != 0 {
-            if commaflag {
-                buffer.WriteString(",")
-            }
-            buffer.WriteString("\n    {\"price\": ")
-            buffer.WriteString(strconv.FormatUint(uint64(price), 10))
-            buffer.WriteString(", \"qty\": ")
-            buffer.WriteString(strconv.FormatUint(uint64(qty), 10))
-            buffer.WriteString(", \"isBuy\": true}")
-            commaflag = true
-            wrote_any_bids = true
-        } else {
-            break
-        }
-    }
-
-    if wrote_any_bids {
-        buffer.WriteString("\n  ")
-    }
-    buffer.WriteString("],\n  \"asks\": [")
-
-    commaflag = false
-    for {
-        qty = 0
-
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 24
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 16
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 8
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte)
-
-        price = 0
-
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 24
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 16
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 8
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte)
-
-        if qty != 0 {
-            if commaflag {
-                buffer.WriteString(",")
-            }
-            buffer.WriteString("\n    {\"price\": ")
-            buffer.WriteString(strconv.FormatUint(uint64(price), 10))
-            buffer.WriteString(", \"qty\": ")
-            buffer.WriteString(strconv.FormatUint(uint64(qty), 10))
-            buffer.WriteString(", \"isBuy\": false}")
-            commaflag = true
-            wrote_any_asks = true
-        } else {
-            break
-        }
-    }
-
-    ts, _ := time.Now().UTC().MarshalJSON()
-
-    if wrote_any_asks {
-        buffer.WriteString("\n  ")
-    }
-    buffer.WriteString("],\n  \"ts\": ")
-    buffer.Write(ts)                        // Already has quotes around it
-    buffer.WriteString("\n}")
-
-    result_chan <- buffer.Bytes()
-    return
-}
-
-func handle_hub_command(msg Command, venue_symbol_map map[string]map[string]bool) {
-    var buffer bytes.Buffer
-    switch msg.HubCommand {
-
-        case VENUES_LIST:
-
-            commaflag := false
-            buffer.WriteString("{\n  \"ok\": true,\n  \"venues\": [")
-            for v := range venue_symbol_map {
-                name := v + " Exchange"
-                if commaflag {
-                    buffer.WriteString(",")
-                }
-                line := fmt.Sprintf("\n    {\"name\": \"%s\", \"state\": \"open\", \"venue\": \"%s\"}", name, v)
-                buffer.WriteString(line)
-                commaflag = true
-            }
-            buffer.WriteString("\n  ]\n}")
-
-        case VENUE_HEARTBEAT:
-
-            if venue_symbol_map[msg.Venue] == nil {
-                buffer.Write(NO_VENUE_HEART)
-            } else {
-                line := fmt.Sprintf(`{"ok": true, "venue": "%s"}`, msg.Venue)
-                buffer.WriteString(line)
-            }
-
-        case STOCK_LIST:
-
-            if venue_symbol_map[msg.Venue] == nil {
-                buffer.Write(NO_VENUE_HEART)
-            } else {
-                commaflag := false
-                buffer.WriteString("{\n  \"ok\": true,\n  \"symbols\": [")
-                for s := range venue_symbol_map[msg.Venue] {
-                    name := s + " Inc"
-                    if commaflag {
-                        buffer.WriteString(",")
-                    }
-                    line := fmt.Sprintf("\n    {\"name\": \"%s\", \"symbol\": \"%s\"}", name, s)
-                    buffer.WriteString(line)
-                    commaflag = true
-                }
-                buffer.WriteString("\n  ]\n}")
-            }
-
-        default:
-
-            buffer.Write(MYSTERY_HUB_CMD)
-    }
-
-    msg.ResponseChan <- buffer.Bytes()
-    return
-}
-
-func hub_command_handler(hub_command_chan chan Command, hub_update_chan chan BookInfo) {
-
-    // Some commands aren't dealt with by passing them to a book but rather are queries of global state.
-    // This goroutine keeps a copy of the relevant state up-to-date by receiving messages from the hub
-    // about new book creation. It thus is able to deal with the commands for such state.
-
-    venue_symbol_map := make(map[string]map[string]bool)   // bool is adequate here
-
-    for {
-        select {
-            case cmd := <- hub_command_chan:
-                handle_hub_command(cmd, venue_symbol_map)
-
-            case update := <- hub_update_chan:
-                if venue_symbol_map[update.Venue] == nil {
-                    venue_symbol_map[update.Venue] = make(map[string]bool)
-                }
-                venue_symbol_map[update.Venue][update.Symbol] = true
-        }
-    }
-}
-
-func hub()  {
-    books := make(map[string]map[string]chan Command)
-    bookcount := 0
-
-    hub_command_chan := make(chan Command)
-    hub_update_chan := make(chan BookInfo)
-
-    go hub_command_handler(hub_command_chan, hub_update_chan)
-
-    for {
-        msg := <- GlobalCommandChan
-
-        // Check whether the command was to the hub or to the book...
-
-        if msg.HubCommand != 0 {
-            hub_command_chan <- msg
-            continue
-        }
-
-        // Command was a real command to a book...
-
-        venue, symbol := msg.Venue, msg.Symbol
-
-        if msg.CreateIfNeeded == false {
-            if books[venue] == nil {
-                msg.ResponseChan <- UNKNOWN_VENUE
-                continue
-            }
-            if books[venue][symbol] == nil {
-                msg.ResponseChan <- UNKNOWN_SYMBOL
-                continue
-            }
-        }
-
-        // Either the book exists or we need to create it...
-
-        if books[venue] == nil || books[venue][symbol] == nil {     // Short circuits if no venue
-
-            if bad_name(venue) || bad_name(symbol) {
-                msg.ResponseChan <- BAD_BOOK_NAME
-                continue
-            }
-
-            if bookcount >= Options.MaxBooks {
-                msg.ResponseChan <- TOO_MANY_BOOKS
-                continue
-            }
-
-            if books[venue] == nil {
-                books[venue] = make(map[string]chan Command)
-            }
-
-            new_command_chan := make(chan Command)
-            books[venue][symbol] = new_command_chan
-            bookcount += 1
-
-            hub_update_chan <- BookInfo{venue, symbol}
-
-            exec_command := exec.Command("./disorderBook.exe", venue, symbol)
-            i_pipe, _ := exec_command.StdinPipe()
-            o_pipe, _ := exec_command.StdoutPipe()
-            e_pipe, _ := exec_command.StderrPipe()
-
-            // Should maybe handle errors from the above.
-
-            new_pipes_struct := PipesStruct{i_pipe, o_pipe, e_pipe}
-
-            exec_command.Start()
-            go ws_controller(venue, symbol, e_pipe)
-            go controller(venue, symbol, new_pipes_struct, new_command_chan)
-            fmt.Printf("Creating %s %s\n", venue, symbol)
-        }
-
-        // The book exists...
-
-        books[venue][symbol] <- msg
-    }
-}
-
-func relay(msg Command, writer http.ResponseWriter) {
-
-    // Send the message to the hub, read the response via a channel,
-    // and then send that response to the http client.
-
+    // Create the default venue...
     result_chan := make(chan []byte)
-    msg.ResponseChan = result_chan
+    msg := Command{
+        ResponseChan: result_chan,
+        Venue: Options.DefaultVenue,
+        Symbol: Options.DefaultSymbol,
+        CreateIfNeeded: true,
+        Command: "THIS_DOES_NOT_MATTER",
+    }
     GlobalCommandChan <- msg
-    res := <- result_chan
-    writer.Write(res)
-    return
+    <- result_chan              // Need to read a result to prevent deadlock
+
+    server_string := fmt.Sprintf("127.0.0.1:%d", Options.Port)
+
+    http.HandleFunc("/", main_handler)
+    http.HandleFunc("/ob/api/ws/", ws_handler)
+    http.ListenAndServe(server_string, nil)
 }
 
 func main_handler(writer http.ResponseWriter, request * http.Request) {
@@ -877,6 +581,338 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
     return
 }
 
+func relay(msg Command, writer http.ResponseWriter) {
+
+    // Send the message to the hub, read the response via a channel,
+    // and then send that response to the http client.
+
+    result_chan := make(chan []byte)
+    msg.ResponseChan = result_chan
+    GlobalCommandChan <- msg
+    res := <- result_chan
+    writer.Write(res)
+    return
+}
+
+func hub()  {
+
+    // All web-handlers that need some sort of considered response send their commands to the hub.
+    // The real reason for this is that the books are in a map; accessing which is not thread-safe.
+    // Earlier architecture ended up with a ton of mutex calls and a map of mutexes behind a mutex...
+
+    books := make(map[string]map[string]chan Command)
+    bookcount := 0
+
+    hub_command_chan := make(chan Command)
+    hub_update_chan := make(chan BookInfo)
+
+    go hub_command_handler(hub_command_chan, hub_update_chan)
+
+    for {
+        msg := <- GlobalCommandChan
+
+        // Check whether the command was to the hub or to the book...
+
+        if msg.HubCommand != 0 {
+            hub_command_chan <- msg
+            continue
+        }
+
+        // Command was a real command to a book...
+
+        venue, symbol := msg.Venue, msg.Symbol
+
+        if msg.CreateIfNeeded == false {
+            if books[venue] == nil {
+                msg.ResponseChan <- UNKNOWN_VENUE
+                continue
+            }
+            if books[venue][symbol] == nil {
+                msg.ResponseChan <- UNKNOWN_SYMBOL
+                continue
+            }
+        }
+
+        // Either the book exists or we need to create it...
+
+        if books[venue] == nil || books[venue][symbol] == nil {     // Short circuits if no venue
+
+            if bad_name(venue) || bad_name(symbol) {
+                msg.ResponseChan <- BAD_BOOK_NAME
+                continue
+            }
+
+            if bookcount >= Options.MaxBooks {
+                msg.ResponseChan <- TOO_MANY_BOOKS
+                continue
+            }
+
+            if books[venue] == nil {
+                books[venue] = make(map[string]chan Command)
+            }
+
+            new_command_chan := make(chan Command)
+            books[venue][symbol] = new_command_chan
+            bookcount += 1
+
+            hub_update_chan <- BookInfo{venue, symbol}
+
+            exec_command := exec.Command("./disorderBook.exe", venue, symbol)
+            i_pipe, _ := exec_command.StdinPipe()
+            o_pipe, _ := exec_command.StdoutPipe()
+            e_pipe, _ := exec_command.StderrPipe()
+
+            // Should maybe handle errors from the above.
+
+            new_pipes_struct := PipesStruct{i_pipe, o_pipe, e_pipe}
+
+            exec_command.Start()
+            go ws_controller(venue, symbol, e_pipe)
+            go controller(venue, symbol, new_pipes_struct, new_command_chan)
+            fmt.Printf("Creating %s %s\n", venue, symbol)
+        }
+
+        // The book exists...
+
+        books[venue][symbol] <- msg
+    }
+}
+
+func hub_command_handler(hub_command_chan chan Command, hub_update_chan chan BookInfo) {
+
+    // Some commands aren't dealt with by passing them to a book but rather are queries of global state.
+    // This goroutine keeps a copy of the relevant state up-to-date by receiving messages from the hub
+    // about new book creation. It thus is able to deal with the commands for such state.
+
+    venue_symbol_map := make(map[string]map[string]bool)   // bool is adequate here
+
+    for {
+        select {
+            case cmd := <- hub_command_chan:
+                handle_hub_command(cmd, venue_symbol_map)
+
+            case update := <- hub_update_chan:
+                if venue_symbol_map[update.Venue] == nil {
+                    venue_symbol_map[update.Venue] = make(map[string]bool)
+                }
+                venue_symbol_map[update.Venue][update.Symbol] = true
+        }
+    }
+}
+
+func handle_hub_command(msg Command, venue_symbol_map map[string]map[string]bool) {
+    var buffer bytes.Buffer
+    switch msg.HubCommand {
+
+        case VENUES_LIST:
+
+            commaflag := false
+            buffer.WriteString("{\n  \"ok\": true,\n  \"venues\": [")
+            for v := range venue_symbol_map {
+                name := v + " Exchange"
+                if commaflag {
+                    buffer.WriteString(",")
+                }
+                line := fmt.Sprintf("\n    {\"name\": \"%s\", \"state\": \"open\", \"venue\": \"%s\"}", name, v)
+                buffer.WriteString(line)
+                commaflag = true
+            }
+            buffer.WriteString("\n  ]\n}")
+
+        case VENUE_HEARTBEAT:
+
+            if venue_symbol_map[msg.Venue] == nil {
+                buffer.Write(NO_VENUE_HEART)
+            } else {
+                line := fmt.Sprintf(`{"ok": true, "venue": "%s"}`, msg.Venue)
+                buffer.WriteString(line)
+            }
+
+        case STOCK_LIST:
+
+            if venue_symbol_map[msg.Venue] == nil {
+                buffer.Write(NO_VENUE_HEART)
+            } else {
+                commaflag := false
+                buffer.WriteString("{\n  \"ok\": true,\n  \"symbols\": [")
+                for s := range venue_symbol_map[msg.Venue] {
+                    name := s + " Inc"
+                    if commaflag {
+                        buffer.WriteString(",")
+                    }
+                    line := fmt.Sprintf("\n    {\"name\": \"%s\", \"symbol\": \"%s\"}", name, s)
+                    buffer.WriteString(line)
+                    commaflag = true
+                }
+                buffer.WriteString("\n  ]\n}")
+            }
+
+        default:
+
+            buffer.Write(MYSTERY_HUB_CMD)
+    }
+
+    msg.ResponseChan <- buffer.Bytes()
+    return
+}
+
+func controller(venue string, symbol string, pipes PipesStruct, command_chan chan Command)  {
+
+    // This goroutine controls the stdout and stdin for a single backend.
+    // (stderr (for WebSockets) is handled by a different goroutine.)
+
+    for {
+        msg := <- command_chan
+
+        command := msg.Command
+
+        if len(command) == 0 || command[len(command) - 1] != '\n' {
+            command = command + "\n"
+        }
+
+        fmt.Fprintf(pipes.Stdin, command)
+
+        if command == "ORDERBOOK_BINARY\n" {      // This is a special case since the response is binary
+            handle_binary_orderbook_response(pipes.Stdout, msg.Venue, msg.Symbol, msg.ResponseChan)
+            continue
+        }
+
+        scanner := bufio.NewScanner(pipes.Stdout)
+        var buffer bytes.Buffer
+
+        for {
+            scanner.Scan()
+            str_piece := scanner.Bytes()
+            if bytes.Equal(str_piece, []byte("END")) {
+                break
+            } else {
+                buffer.Write(str_piece)
+                buffer.WriteByte('\n')
+            }
+        }
+
+        msg.ResponseChan <- buffer.Bytes()
+    }
+}
+
+func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string, symbol string, result_chan chan []byte) {
+
+    reader := bufio.NewReader(backend_stdout)
+
+    var nextbyte byte
+    var qty uint32
+    var price uint32
+    var commaflag bool
+
+    var buffer bytes.Buffer
+
+    buffer.WriteString("{\n  \"ok\": true,\n  \"venue\": \"")
+    buffer.WriteString(venue)
+    buffer.WriteString("\",\n  \"symbol\": \"")
+    buffer.WriteString(symbol)
+    buffer.WriteString("\",\n  \"bids\": [")
+
+    wrote_any_bids := false
+    wrote_any_asks := false
+
+    commaflag = false
+    for {
+        qty = 0
+
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 24
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 16
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 8
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte)
+
+        price = 0
+
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 24
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 16
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 8
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte)
+
+        if qty != 0 {
+            if commaflag {
+                buffer.WriteString(",")
+            }
+            buffer.WriteString("\n    {\"price\": ")
+            buffer.WriteString(strconv.FormatUint(uint64(price), 10))
+            buffer.WriteString(", \"qty\": ")
+            buffer.WriteString(strconv.FormatUint(uint64(qty), 10))
+            buffer.WriteString(", \"isBuy\": true}")
+            commaflag = true
+            wrote_any_bids = true
+        } else {
+            break
+        }
+    }
+
+    if wrote_any_bids {
+        buffer.WriteString("\n  ")
+    }
+    buffer.WriteString("],\n  \"asks\": [")
+
+    commaflag = false
+    for {
+        qty = 0
+
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 24
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 16
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte) << 8
+        nextbyte, _ = reader.ReadByte()
+        qty += uint32(nextbyte)
+
+        price = 0
+
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 24
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 16
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte) << 8
+        nextbyte, _ = reader.ReadByte()
+        price += uint32(nextbyte)
+
+        if qty != 0 {
+            if commaflag {
+                buffer.WriteString(",")
+            }
+            buffer.WriteString("\n    {\"price\": ")
+            buffer.WriteString(strconv.FormatUint(uint64(price), 10))
+            buffer.WriteString(", \"qty\": ")
+            buffer.WriteString(strconv.FormatUint(uint64(qty), 10))
+            buffer.WriteString(", \"isBuy\": false}")
+            commaflag = true
+            wrote_any_asks = true
+        } else {
+            break
+        }
+    }
+
+    ts, _ := time.Now().UTC().MarshalJSON()
+
+    if wrote_any_asks {
+        buffer.WriteString("\n  ")
+    }
+    buffer.WriteString("],\n  \"ts\": ")
+    buffer.Write(ts)                        // Already has quotes around it
+    buffer.WriteString("\n}")
+
+    result_chan <- buffer.Bytes()
+    return
+}
+
 /*
 WebSocket strategy:
 
@@ -962,9 +998,9 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
     }
 }
 
-// See comments above for WebSocket strategy.
-
 func ws_controller(venue string, symbol string, backend_stderr io.ReadCloser) {
+
+    // See comments above for WebSocket strategy.
 
     scanner := bufio.NewScanner(backend_stderr)
 
@@ -1056,10 +1092,11 @@ func remove_from_ws_client_list(info_ptr * WsInfo) {
     return
 }
 
-// Apparently reading WebSocket messages from clients is mandatory.
-// This function also closes connections if needed.
-
 func ws_null_reader(conn * websocket.Conn, info_ptr * WsInfo) {
+
+    // Apparently reading WebSocket messages from clients is mandatory.
+    // This function also closes connections if needed.
+
     for {
         if _, _, err := conn.NextReader(); err != nil {
             remove_from_ws_client_list(info_ptr)
@@ -1068,6 +1105,8 @@ func ws_null_reader(conn * websocket.Conn, info_ptr * WsInfo) {
         }
     }
 }
+
+// Minor utility functions follow...
 
 func load_auth() {
 
@@ -1100,50 +1139,19 @@ func load_auth() {
     return
 }
 
-func main() {
+func bad_name(name string) bool {
 
-    maxbooksPtr         := flag.Int("maxbooks", 100, "Maximum number of books")
-    portPtr             := flag.Int("port", 8000, "Port for web API and WebSockets")
-    accountfilenamePtr  := flag.String("accounts", "", "Accounts file for authentication")
-    defaultvenuePtr     := flag.String("venue", "TESTEX", "Default venue")
-    defaultsymbolPtr    := flag.String("symbol", "FOOBAR", "Default symbol")
-    excessPtr           := flag.Bool("excess", false, "Enable commands that can return excessive responses")
-
-    flag.Parse()
-
-    Options = OptionsStruct{    MaxBooks : *maxbooksPtr,
-                                    Port : *portPtr,
-                         AccountFilename : *accountfilenamePtr,
-                            DefaultVenue : *defaultvenuePtr,
-                           DefaultSymbol : *defaultsymbolPtr,
-                                  Excess : *excessPtr}
-
-    fmt.Printf("\ndisorderBook (C+Go version) starting up on port %d\n", Options.Port)
-
-    if Options.AccountFilename != "" {
-        load_auth()
-        AuthMode = true
-    } else {
-        fmt.Printf("\n-----> Warning: running WITHOUT AUTHENTICATION! <-----\n\n")
+    if len(name) < 1 || len(name) > 20 {
+        return true
     }
 
-    go hub()
+    // Disallow all chars except alphanumeric and underscore...
 
-    // Create the default venue...
-    result_chan := make(chan []byte)
-    msg := Command{
-        ResponseChan: result_chan,
-        Venue: Options.DefaultVenue,
-        Symbol: Options.DefaultSymbol,
-        CreateIfNeeded: true,
-        Command: "THIS_DOES_NOT_MATTER",
+    for _, c := range(name) {
+        if c < 48 || (c > 57 && c < 65) || (c > 90 && c < 95) || c == 96 || c > 122 {
+            return true
+        }
     }
-    GlobalCommandChan <- msg
-    <- result_chan              // Need to read a result to prevent deadlock
 
-    server_string := fmt.Sprintf("127.0.0.1:%d", Options.Port)
-
-    http.HandleFunc("/", main_handler)
-    http.HandleFunc("/ob/api/ws/", ws_handler)
-    http.ListenAndServe(server_string, nil)
+    return false
 }
