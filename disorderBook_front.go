@@ -956,7 +956,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
         msg := <- message_channel
         err = conn.WriteMessage(websocket.TextMessage, []byte(msg))
         if err != nil {
-            delete_client_from_global_list(&info)
+            remove_from_ws_client_list(&info)
             return      // The function ws_null_reader() will likely close the connection.
         }
     }
@@ -1036,7 +1036,7 @@ func append_to_ws_client_list(info_ptr * WsInfo)  {
     return
 }
 
-func delete_client_from_global_list(info_ptr * WsInfo) {
+func remove_from_ws_client_list(info_ptr * WsInfo) {
 
     // Does nothing if the client isn't in the list
 
@@ -1062,7 +1062,7 @@ func delete_client_from_global_list(info_ptr * WsInfo) {
 func ws_null_reader(conn * websocket.Conn, info_ptr * WsInfo) {
     for {
         if _, _, err := conn.NextReader(); err != nil {
-            delete_client_from_global_list(info_ptr)
+            remove_from_ws_client_list(info_ptr)
             conn.Close()
             return
         }
