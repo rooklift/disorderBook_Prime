@@ -200,7 +200,7 @@ func create_book_if_needed(venue string, symbol string) error {
     Locks[venue][symbol] = new(sync.Mutex)      // new() returns a pointer
     BookCount++
     command.Start()
-    go ws_controller(venue, symbol)
+    go ws_controller(venue, symbol, e_pipe)
 
     return nil
 }
@@ -758,7 +758,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 acc_id = len(AccountInts)
                 AccountInts[raw_order.Account] = acc_id
             }
-            AccountInts_MUTEX.Unlock()            // <-------------------------------------- UNLOCK
+            AccountInts_MUTEX.Unlock()          // <---------------------------------------- UNLOCK
 
             command := fmt.Sprintf("ORDER %s %d %d %d %d %d", raw_order.Account, acc_id, raw_order.Qty, raw_order.Price, int_direction, int_ordertype)
             res := get_response_from_book(command, venue, symbol)
@@ -796,13 +796,6 @@ Each C backend sends messages to stderr. There is one goroutine per
 backend -- ws_controller() -- that reads these messages and passes them
 on via the channel (only sending to the correct clients).
 */
-
-func append_to_ws_client_list(info_ptr * WsInfo)  {
-    WebSocketClients_MUTEX.Lock()       // <---------------------------------------- LOCK for __rw__
-    WebSocketClients = append(WebSocketClients, info_ptr)
-    fmt.Printf("WebSocket -OPEN- ... Active == %d\n", len(WebSocketClients))
-    WebSocketClients_MUTEX.Unlock()     // <---------------------------------------- UNLOCK
-}
 
 func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
@@ -879,16 +872,8 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
 // See comments above for WebSocket strategy.
 
-func ws_controller(venue string, symbol string) {
+func ws_controller(venue string, symbol string, backend_stderr io.ReadCloser) {
 
-    Books_Locks_Count_MUTEX.RLock()     // <---------------------------------------- RLock
-    backend_stderr := Books[venue][symbol].stderr
-    Books_Locks_Count_MUTEX.RUnlock()   // <---------------------------------------- RUnlock
-
-    // This is the only goroutine reading the stderr. The lock above is needed
-    // just to access the pointer that points at the stderr pipe. FIXME: could
-    // just pass this in as an argument when starting this goroutine.
-    
     scanner := bufio.NewScanner(backend_stderr)
 
     for {
@@ -947,6 +932,13 @@ func ws_controller(venue string, symbol string) {
 
         WebSocketClients_MUTEX.RUnlock()    // <---------------------------------------- RUnlock
     }
+}
+
+func append_to_ws_client_list(info_ptr * WsInfo)  {
+    WebSocketClients_MUTEX.Lock()       // <---------------------------------------- LOCK for __rw__
+    WebSocketClients = append(WebSocketClients, info_ptr)
+    fmt.Printf("WebSocket -OPEN- ... Active == %d\n", len(WebSocketClients))
+    WebSocketClients_MUTEX.Unlock()     // <---------------------------------------- UNLOCK
 }
 
 func delete_client_from_global_list(info_ptr * WsInfo) {
