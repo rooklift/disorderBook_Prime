@@ -68,7 +68,6 @@ type BookInfo struct {
     Symbol string
 }
 
-
 var HEARTBEAT_OK      = []byte(`{"ok": true, "error": ""}`)
 var UNKNOWN_PATH      = []byte(`{"ok": false, "error": "Unknown path"}`)
 var UNKNOWN_VENUE     = []byte(`{"ok": false, "error": "Unknown venue"}`)
@@ -201,12 +200,12 @@ func controller(venue string, symbol string, pipes PipesStruct, command_chan cha
 
         for {
             scanner.Scan()
-            str_piece := scanner.Text()
-            if str_piece != "END" {
-                buffer.WriteString(str_piece)
-                buffer.WriteByte('\n')
-            } else {
+            str_piece := scanner.Bytes()
+            if bytes.Equal(str_piece, []byte("END")) {
                 break
+            } else {
+                buffer.Write(str_piece)
+                buffer.WriteByte('\n')
             }
         }
 
