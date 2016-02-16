@@ -89,6 +89,7 @@ var BAD_ORDERTYPE     = []byte(`{"ok": false, "error": "Bad (unknown) orderType"
 var BAD_PRICE         = []byte(`{"ok": false, "error": "Bad (negative) price"}`)
 var BAD_QTY           = []byte(`{"ok": false, "error": "Bad (non-positive) qty"}`)
 var MYSTERY_HUB_CMD   = []byte(`{"ok": false, "error": "Hub received unknown hub command"}`)
+var STATUS_ON_UNKNOWN = []byte(`{"ok": false, "error": "Status/cancel on unknown book"}`)
 
 const (
     VENUES_LIST = 1
@@ -407,6 +408,11 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             }
             GlobalCommandChan <- msg
             res1 := <- result_chan
+
+            if bytes.Equal(res1, UNKNOWN_VENUE) || bytes.Equal(res1, UNKNOWN_SYMBOL) {
+                writer.Write(STATUS_ON_UNKNOWN)
+                return
+            }
 
             sres1 := string(res1)
             sres1 = strings.Trim(sres1, " \t\n\r")
