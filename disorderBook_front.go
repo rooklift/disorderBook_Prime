@@ -477,7 +477,7 @@ func hub()  {
             new_pipes_struct := PipesStruct{i_pipe, o_pipe, e_pipe}
 
             exec_command.Start()
-            go ws_relayer(venue, symbol, e_pipe)
+            go ws_controller(venue, symbol, e_pipe)
             go controller(venue, symbol, new_pipes_struct, new_command_chan)
             fmt.Printf("Creating %s %s\n", venue, symbol)
         }
@@ -733,7 +733,6 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 Command: command,
                 CreateIfNeeded: false,
             }
-
             relay(msg, writer)
             return
         }
@@ -849,7 +848,6 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 Command: command,
                 CreateIfNeeded: true,
             }
-
             relay(msg, writer)
             return
         }
@@ -870,7 +868,6 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 Command: "__SCORES__",
                 CreateIfNeeded: false,
             }
-
             relay(msg, writer)
             return
         }
@@ -888,7 +885,7 @@ in a global struct, storing account, venue, and symbol (some of which
 are optional). It also stores a channel used for communication.
 
 Each C backend sends messages to stderr. There is one goroutine per
-backend -- ws_relayer() -- that reads these messages and passes them
+backend -- ws_controller() -- that reads these messages and passes them
 on via the channels (only sending to the correct clients).
 */
 
@@ -967,7 +964,7 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
 // See comments above for WebSocket strategy.
 
-func ws_relayer(venue string, symbol string, backend_stderr io.ReadCloser) {
+func ws_controller(venue string, symbol string, backend_stderr io.ReadCloser) {
 
     scanner := bufio.NewScanner(backend_stderr)
 
