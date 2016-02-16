@@ -59,7 +59,7 @@ type Command struct {
     Command string
     HubCommand int
     CreateIfNeeded bool
-    ResponseChan chan string
+    ResponseChan chan []byte
 }
 
 type BookInfo struct {
@@ -67,29 +67,28 @@ type BookInfo struct {
     Symbol string
 }
 
-const (
-    HEARTBEAT_OK      = `{"ok": true, "error": ""}`
-    UNKNOWN_PATH      = `{"ok": false, "error": "Unknown path"}`
-    UNKNOWN_VENUE     = `{"ok": false, "error": "Unknown venue"}`
-    UNKNOWN_SYMBOL    = `{"ok": false, "error": "Venue is known but symbol is not"}`
-    BAD_JSON          = `{"ok": false, "error": "Failed to parse incoming JSON"}`
-    URL_MISMATCH      = `{"ok": false, "error": "Venue or symbol in URL did not match that in POST"}`
-    MISSING_FIELD     = `{"ok": false, "error": "Missing key or unacceptable value in POST"}`
-    UNKNOWN_ORDER     = `{"ok": false, "error": "Unknown order ID"}`
-    BAD_ORDER         = `{"ok": false, "error": "Couldn't parse order ID"}`
-    AUTH_FAILURE      = `{"ok": false, "error": "Unknown account or wrong API key"}`
-    NO_VENUE_HEART    = `{"ok": false, "error": "Venue not up (create it by using it)"}`
-    BAD_BOOK_NAME     = `{"ok": false, "error": "Couldn't create book! Bad name for a book!"}`
-    TOO_MANY_BOOKS    = `{"ok": false, "error": "Couldn't create book! Too many books!"}`
-    NOT_IMPLEMENTED   = `{"ok": false, "error": "Not implemented"}`
-    DISABLED          = `{"ok": false, "error": "Disabled or not enabled. (See command line options)"}`
-    BAD_ACCOUNT_NAME  = `{"ok": false, "error": "Bad account name (should be alpha_numeric and sane length)"}`
-    BAD_DIRECTION     = `{"ok": false, "error": "Bad direction (should be buy or sell, lowercase)"}`
-    BAD_ORDERTYPE     = `{"ok": false, "error": "Bad (unknown) orderType"}`
-    BAD_PRICE         = `{"ok": false, "error": "Bad (negative) price"}`
-    BAD_QTY           = `{"ok": false, "error": "Bad (non-positive) qty"}`
-    MYSTERY_HUB_CMD   = `{"ok": false, "error": "Hub received unknown hub command"}`
-)
+
+var HEARTBEAT_OK      = []byte(`{"ok": true, "error": ""}`)
+var UNKNOWN_PATH      = []byte(`{"ok": false, "error": "Unknown path"}`)
+var UNKNOWN_VENUE     = []byte(`{"ok": false, "error": "Unknown venue"}`)
+var UNKNOWN_SYMBOL    = []byte(`{"ok": false, "error": "Venue is known but symbol is not"}`)
+var BAD_JSON          = []byte(`{"ok": false, "error": "Failed to parse incoming JSON"}`)
+var URL_MISMATCH      = []byte(`{"ok": false, "error": "Venue or symbol in URL did not match that in POST"}`)
+var MISSING_FIELD     = []byte(`{"ok": false, "error": "Missing key or unacceptable value in POST"}`)
+var UNKNOWN_ORDER     = []byte(`{"ok": false, "error": "Unknown order ID"}`)
+var BAD_ORDER         = []byte(`{"ok": false, "error": "Couldn't parse order ID"}`)
+var AUTH_FAILURE      = []byte(`{"ok": false, "error": "Unknown account or wrong API key"}`)
+var NO_VENUE_HEART    = []byte(`{"ok": false, "error": "Venue not up (create it by using it)"}`)
+var BAD_BOOK_NAME     = []byte(`{"ok": false, "error": "Couldn't create book! Bad name for a book!"}`)
+var TOO_MANY_BOOKS    = []byte(`{"ok": false, "error": "Couldn't create book! Too many books!"}`)
+var NOT_IMPLEMENTED   = []byte(`{"ok": false, "error": "Not implemented"}`)
+var DISABLED          = []byte(`{"ok": false, "error": "Disabled or not enabled. (See command line options)"}`)
+var BAD_ACCOUNT_NAME  = []byte(`{"ok": false, "error": "Bad account name (should be alpha_numeric and sane length)"}`)
+var BAD_DIRECTION     = []byte(`{"ok": false, "error": "Bad direction (should be buy or sell, lowercase)"}`)
+var BAD_ORDERTYPE     = []byte(`{"ok": false, "error": "Bad (unknown) orderType"}`)
+var BAD_PRICE         = []byte(`{"ok": false, "error": "Bad (negative) price"}`)
+var BAD_QTY           = []byte(`{"ok": false, "error": "Bad (non-positive) qty"}`)
+var MYSTERY_HUB_CMD   = []byte(`{"ok": false, "error": "Hub received unknown hub command"}`)
 
 const (
     VENUES_LIST = 1
@@ -210,11 +209,11 @@ func controller(venue string, symbol string, pipes PipesStruct, command_chan cha
             }
         }
 
-        msg.ResponseChan <- buffer.String()
+        msg.ResponseChan <- buffer.Bytes()
     }
 }
 
-func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string, symbol string, result_chan chan string) {
+func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string, symbol string, result_chan chan []byte) {
 
     reader := bufio.NewReader(backend_stdout)
 
@@ -332,7 +331,7 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
     buffer.WriteString(ts)
     buffer.WriteString("\"\n}")
 
-    result_chan <- buffer.String()
+    result_chan <- buffer.Bytes()
     return
 }
 
@@ -358,7 +357,7 @@ func handle_hub_command(msg Command, venue_symbol_map map[string]map[string]bool
         case VENUE_HEARTBEAT:
 
             if venue_symbol_map[msg.Venue] == nil {
-                buffer.WriteString(NO_VENUE_HEART)
+                buffer.Write(NO_VENUE_HEART)
             } else {
                 line := fmt.Sprintf(`{"ok": true, "venue": "%s"}`, msg.Venue)
                 buffer.WriteString(line)
@@ -367,7 +366,7 @@ func handle_hub_command(msg Command, venue_symbol_map map[string]map[string]bool
         case STOCK_LIST:
 
             if venue_symbol_map[msg.Venue] == nil {
-                buffer.WriteString(NO_VENUE_HEART)
+                buffer.Write(NO_VENUE_HEART)
             } else {
                 commaflag := false
                 buffer.WriteString("{\n  \"ok\": true,\n  \"symbols\": [")
@@ -385,10 +384,10 @@ func handle_hub_command(msg Command, venue_symbol_map map[string]map[string]bool
 
         default:
 
-            buffer.WriteString(MYSTERY_HUB_CMD)
+            buffer.Write(MYSTERY_HUB_CMD)
     }
 
-    msg.ResponseChan <- buffer.String()
+    msg.ResponseChan <- buffer.Bytes()
     return
 }
 
@@ -498,11 +497,11 @@ func relay(msg Command, writer http.ResponseWriter) {
     // Send the message to the hub, read the response via a channel,
     // and then send that response to the http client.
 
-    result_chan := make(chan string)
+    result_chan := make(chan []byte)
     msg.ResponseChan = result_chan
     GlobalCommandChan <- msg
     res := <- result_chan
-    fmt.Fprintf(writer, res)
+    writer.Write(res)
     return
 }
 
@@ -529,7 +528,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
     // Check for obvious path fails..............................................................
 
     if len(pathlist) < 2 || pathlist[0] != "ob" || pathlist[1] != "api" {
-        fmt.Fprintf(writer, UNKNOWN_PATH)
+        writer.Write(UNKNOWN_PATH)
         return
     }
 
@@ -537,7 +536,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
 
     if len(pathlist) == 3 {
         if pathlist[2] == "heartbeat" {
-            fmt.Fprintf(writer, HEARTBEAT_OK)
+            writer.Write(HEARTBEAT_OK)
             return
         }
     }
@@ -635,7 +634,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
 
     if len(pathlist) == 7 {
         if pathlist[2] == "venues" && pathlist[4] == "accounts" && pathlist[6] == "orders" {
-            fmt.Fprintf(writer, NOT_IMPLEMENTED)
+            writer.Write(NOT_IMPLEMENTED)
             return
         }
     }
@@ -649,14 +648,14 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             symbol := pathlist[7]
 
             if Options.Excess == false {
-                fmt.Fprintf(writer, DISABLED)
+                writer.Write(DISABLED)
                 return
             }
 
             if AuthMode {       // Do this before the acc_id int is generated
                 api_key, ok := Auth[account]
                 if api_key != request_api_key || ok == false {
-                    fmt.Fprintf(writer, AUTH_FAILURE)
+                    writer.Write(AUTH_FAILURE)
                     return
                 }
             }
@@ -689,7 +688,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
 
             id, err := strconv.Atoi(pathlist[7])
             if err != nil {
-                fmt.Fprintf(writer, BAD_ORDER)
+                writer.Write(BAD_ORDER)
                 return
             }
 
@@ -697,7 +696,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             // send that on to the client. Once we have the info we can make the real request.
 
             command := "__ACC_FROM_ID__ " + strconv.Itoa(id)
-            result_chan := make(chan string)
+            result_chan := make(chan []byte)
 
             msg := Command{
                 ResponseChan: result_chan,
@@ -709,18 +708,19 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             GlobalCommandChan <- msg
             res1 := <- result_chan
 
-            res1 = strings.Trim(res1, " \t\n\r")
-            reply_list := strings.Split(res1, " ")
+            sres1 := string(res1)
+            sres1 = strings.Trim(sres1, " \t\n\r")
+            reply_list := strings.Split(sres1, " ")
             err_string, account := reply_list[0], reply_list[1]
 
             if err_string == "ERROR" {
-                fmt.Fprintf(writer, UNKNOWN_ORDER)
+                writer.Write(UNKNOWN_ORDER)
                 return
             }
 
             if AuthMode {
                 if Auth[account] != request_api_key || Auth[account] == "" {
-                    fmt.Fprintf(writer, AUTH_FAILURE)
+                    writer.Write(AUTH_FAILURE)
                     return
                 }
             }
@@ -755,7 +755,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             err := decoder.Decode(&raw_order)
 
             if err != nil {
-                fmt.Fprintf(writer, BAD_JSON)
+                writer.Write(BAD_JSON)
                 return
             }
 
@@ -773,27 +773,27 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             }
 
             if raw_order.Venue != venue || raw_order.Symbol != symbol {
-                fmt.Fprintf(writer, URL_MISMATCH)
+                writer.Write(URL_MISMATCH)
                 return
             }
 
             if raw_order.Venue == "" || raw_order.Symbol == "" || raw_order.Account == "" || raw_order.Direction == "" || raw_order.OrderType == "" {
-                fmt.Fprintf(writer, MISSING_FIELD)
+                writer.Write(MISSING_FIELD)
                 return
             }
 
             if raw_order.Price < 0 {
-                fmt.Fprintf(writer, BAD_PRICE)
+                writer.Write(BAD_PRICE)
                 return
             }
 
             if raw_order.Qty < 1 {
-                fmt.Fprintf(writer, BAD_QTY)
+                writer.Write(BAD_QTY)
                 return
             }
 
             if bad_name(raw_order.Account) {
-                fmt.Fprintf(writer, BAD_ACCOUNT_NAME)
+                writer.Write(BAD_ACCOUNT_NAME)
                 return
             }
 
@@ -812,7 +812,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 case "market":
                     int_ordertype = MARKET
                 default:
-                    fmt.Fprintf(writer, BAD_ORDERTYPE)
+                    writer.Write(BAD_ORDERTYPE)
                     return
             }
 
@@ -823,14 +823,14 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
                 case "buy":
                     int_direction = BUY
                 default:
-                    fmt.Fprintf(writer, BAD_DIRECTION)
+                    writer.Write(BAD_DIRECTION)
                     return
             }
 
             if AuthMode {
                 api_key, ok := Auth[raw_order.Account]
                 if api_key != request_api_key || ok == false {
-                    fmt.Fprintf(writer, AUTH_FAILURE)
+                    writer.Write(AUTH_FAILURE)
                     return
                 }
             }
@@ -880,7 +880,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
         }
     }
 
-    fmt.Fprintf(writer, UNKNOWN_PATH)
+    writer.Write(UNKNOWN_PATH)
     return
 }
 
@@ -1137,7 +1137,7 @@ func main() {
     go hub()
 
     // Create the default venue...
-    result_chan := make(chan string)
+    result_chan := make(chan []byte)
     msg := Command{
         ResponseChan: result_chan,
         Venue: Options.DefaultVenue,
