@@ -442,7 +442,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
         }
     }
 
-    // Order placing...
+    // Order placing.............................................................................
 
     if len(pathlist) == 7 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" && request.Method == "POST" {
@@ -557,7 +557,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
         }
     }
 
-    // Scores...
+    // Scores....................................................................................
 
     if len(pathlist) == 7 {
         if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "scores" {
@@ -576,6 +576,8 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             return
         }
     }
+
+    // Unknown...................................................................................
 
     writer.Write(UNKNOWN_PATH)
     return
