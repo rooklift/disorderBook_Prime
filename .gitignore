@@ -4,17 +4,8 @@ __pycache__/
 # TCC in the project directory for convenience
 include/
 lib/
-tcc.exe
-tiny_impdef.exe
-tiny_libmaker.exe
-
-# Tests
-mass_order_test.py
-ws_test_executions.py
-ws_test_ticker.py
 
 # Other files:
-disorderBook_on_8005.bat
-disorderBook_with_auth.bat
-disorderBook_with_excess.bat
+*.py
+*.bat
 *.exe
