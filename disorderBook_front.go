@@ -160,21 +160,16 @@ var GlobalCommandChan = make(chan Command)
 
 func main() {
 
-    maxbooksPtr         := flag.Int("maxbooks", 100, "Maximum number of books")
-    portPtr             := flag.Int("port", 8000, "Port for web API and WebSockets")
-    accountfilenamePtr  := flag.String("accounts", "", "Accounts file for authentication")
-    defaultvenuePtr     := flag.String("venue", "TESTEX", "Default venue")
-    defaultsymbolPtr    := flag.String("symbol", "FOOBAR", "Default symbol")
-    excessPtr           := flag.Bool("excess", false, "Enable commands that can return excessive responses")
+    Options = OptionsStruct{}   // This is a global defined above
+
+    flag.IntVar(&Options.MaxBooks, "maxbooks", 100, "Maximum number of books")
+    flag.IntVar(&Options.Port, "port", 8000, "Port for web API and WebSockets")
+    flag.StringVar(&Options.AccountFilename, "accounts", "", "Accounts file for authentication")
+    flag.StringVar(&Options.DefaultVenue, "venue", "TESTEX", "Default venue")
+    flag.StringVar(&Options.DefaultSymbol, "symbol", "FOOBAR", "Default symbol")
+    flag.BoolVar(&Options.Excess, "excess", false, "Enable commands that can return excessive responses")
 
     flag.Parse()
-
-    Options = OptionsStruct{    MaxBooks : *maxbooksPtr,
-                                    Port : *portPtr,
-                         AccountFilename : *accountfilenamePtr,
-                            DefaultVenue : *defaultvenuePtr,
-                           DefaultSymbol : *defaultsymbolPtr,
-                                  Excess : *excessPtr}
 
     fmt.Printf("\ndisorderBook (C+Go version) starting up on port %d\n", Options.Port)
 
