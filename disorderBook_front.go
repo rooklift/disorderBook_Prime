@@ -153,7 +153,7 @@ var Auth = make(map[string]string)
 
 // The following globals are safe because they are never "written" to as such:
 
-var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
+var Upgrader = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024, CheckOrigin: func(r *http.Request) bool {return true}}
 var GlobalCommandChan = make(chan Command)
 
 // -------------------------------------------------------------------------------------------------------
@@ -207,6 +207,9 @@ func main() {
 }
 
 func main_handler(writer http.ResponseWriter, request * http.Request) {
+
+    // Each time a new web request comes in (not including
+    // WebSocket connections) this is called as a new goroutine.
 
     writer.Header().Set("Content-Type", "application/json")     // A few things change this later
 
@@ -570,7 +573,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             venue := pathlist[3]
             symbol := pathlist[5]
 
-            writer.Header().Set("Content-Type", "text/html")
+            writer.Header().Set("Content-Type", "text/html")    // FIXME? If the book doesn't exist it will be a JSON response
 
             msg := Command{
                 Venue: venue,
@@ -602,10 +605,10 @@ func relay(msg Command, writer http.ResponseWriter) {
     return
 }
 
-func hub()  {
+func hub() {
 
     // All web-handlers that need some sort of considered response send their commands to the hub.
-    // The real reason for this is that the books are in a map; accessing which is not thread-safe.
+    // The real reason for this is that the books are behind a map; accessing which is not thread-safe.
     // Earlier architecture ended up with a ton of mutex calls and a map of mutexes behind a mutex...
 
     books := make(map[string]map[string]chan Command)
@@ -627,6 +630,7 @@ func hub()  {
         }
 
         // Command was a real command to a book...
+        // But maybe it doesn't exist and we can ignore it?
 
         venue, symbol := msg.Venue, msg.Symbol
 
@@ -1070,7 +1074,7 @@ func ws_controller(venue string, symbol string, backend_stderr io.ReadCloser) {
     }
 }
 
-func append_to_ws_client_list(info_ptr * WsInfo)  {
+func append_to_ws_client_list(info_ptr * WsInfo) {
 
     WebSocketClients_MUTEX.Lock()
     defer WebSocketClients_MUTEX.Unlock()
