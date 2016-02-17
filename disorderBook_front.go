@@ -160,8 +160,6 @@ var GlobalCommandChan = make(chan Command)
 
 func main() {
 
-    Options = OptionsStruct{}   // This is a global defined above
-
     flag.IntVar(&Options.MaxBooks, "maxbooks", 100, "Maximum number of books")
     flag.IntVar(&Options.Port, "port", 8000, "Port for web API and WebSockets")
     flag.StringVar(&Options.AccountFilename, "accounts", "", "Accounts file for authentication")
