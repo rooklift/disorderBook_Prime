@@ -3,6 +3,7 @@ package main
 import (
     "bufio"
     "bytes"
+    "encoding/binary"
     "encoding/json"
     "flag"
     "fmt"
@@ -802,9 +803,12 @@ func controller(venue string, symbol string, pipes PipesStruct, command_chan cha
 
 func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string, symbol string, result_chan chan []byte) {
 
+    // The orderbook is the only thing the C backend sends in a binary format (this is
+    // done for speed reasons, as it's potentially a large amount of data, frequently
+    // requested in normal usage).
+
     reader := bufio.NewReader(backend_stdout)
 
-    var nextbyte byte
     var qty uint32
     var price uint32
     var commaflag bool
@@ -822,27 +826,8 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
 
     commaflag = false
     for {
-        qty = 0
-
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 24
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 16
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 8
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte)
-
-        price = 0
-
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 24
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 16
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 8
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte)
+        binary.Read(reader, binary.BigEndian, &qty)
+        binary.Read(reader, binary.BigEndian, &price)
 
         if qty != 0 {
             if commaflag {
@@ -867,27 +852,8 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
 
     commaflag = false
     for {
-        qty = 0
-
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 24
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 16
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte) << 8
-        nextbyte, _ = reader.ReadByte()
-        qty += uint32(nextbyte)
-
-        price = 0
-
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 24
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 16
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte) << 8
-        nextbyte, _ = reader.ReadByte()
-        price += uint32(nextbyte)
+        binary.Read(reader, binary.BigEndian, &qty)
+        binary.Read(reader, binary.BigEndian, &price)
 
         if qty != 0 {
             if commaflag {
