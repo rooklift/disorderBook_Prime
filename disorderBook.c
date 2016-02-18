@@ -1491,7 +1491,7 @@ void print_scores (void)
     char * ts;
     int n;
 
-    printf("<html><head><title>disorderBook Scores</title></head><body><pre>%s %s\n", Venue, Symbol);
+    printf("<html><head><title>%s %s</title></head><body><pre>%s %s\n", Venue, Symbol, Venue, Symbol);
 
     if (Quote.last == -1)
     {
