@@ -92,6 +92,7 @@ var BAD_QTY           = []byte(`{"ok": false, "error": "Bad (non-positive) qty"}
 var MYSTERY_HUB_CMD   = []byte(`{"ok": false, "error": "Hub received unknown hub command"}`)
 var STATUS_ON_UNKNOWN = []byte(`{"ok": false, "error": "Status/cancel on unknown book"}`)
 var BAD_METHOD        = []byte(`{"ok": false, "error": "Method not allowed, use GET, DELETE, POST only"}`)
+var BAD_METHOD_HERE   = []byte(`{"ok": false, "error": "Method not allowed at this URL"}`)
 
 const (
     VENUES_LIST = 1
@@ -385,7 +386,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
         }
     }
 
-    // Status and cancel.........................................................................
+    // Status and cancel (including cancel at alternate URL).....................................
 
     if (len(pathlist) == 8 && pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders") ||
        (len(pathlist) == 9 && pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" && pathlist[8] == "cancel") {
@@ -395,6 +396,13 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
         id, err := strconv.Atoi(pathlist[7])
         if err != nil {
             writer.Write(BAD_ORDER)
+            return
+        }
+
+        // GET doesn't make sense at the alternate cancel URL... (we'll allow DELETE I guess)
+
+        if len(pathlist) == 9 && request.Method == "GET" {
+            writer.Write(BAD_METHOD_HERE)
             return
         }
 
@@ -436,7 +444,7 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
             }
         }
 
-        if request.Method == "DELETE" || (request.Method == "POST" && len(pathlist) == 9) {
+        if request.Method == "DELETE" || len(pathlist) == 9 {       // The longer path is the alternate cancel URL
             command = fmt.Sprintf("CANCEL %d", id)
         } else {
             command = fmt.Sprintf("STATUS %d", id)
@@ -455,9 +463,14 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
     // Order placing.............................................................................
 
     if len(pathlist) == 7 {
-        if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" && request.Method == "POST" {
+        if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" {
             venue := pathlist[3]
             symbol := pathlist[5]
+
+            if request.Method != "POST" {
+                writer.Write(BAD_METHOD_HERE)
+                return
+            }
 
             raw_order := OrderStruct{}
             decoder := json.NewDecoder(request.Body)
