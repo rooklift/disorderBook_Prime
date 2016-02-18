@@ -91,6 +91,7 @@ var BAD_PRICE         = []byte(`{"ok": false, "error": "Bad (negative) price"}`)
 var BAD_QTY           = []byte(`{"ok": false, "error": "Bad (non-positive) qty"}`)
 var MYSTERY_HUB_CMD   = []byte(`{"ok": false, "error": "Hub received unknown hub command"}`)
 var STATUS_ON_UNKNOWN = []byte(`{"ok": false, "error": "Status/cancel on unknown book"}`)
+var BAD_METHOD        = []byte(`{"ok": false, "error": "Method not allowed, use GET, DELETE, POST only"}`)
 
 const (
     VENUES_LIST = 1
@@ -214,6 +215,13 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
 
     path_clean := strings.Trim(request.URL.Path, "\n\r\t /")
     pathlist := strings.Split(path_clean, "/")
+
+    // Disallow all methods except GET, DELETE, POST.............................................
+
+    if request.Method != "GET" && request.Method != "DELETE" && request.Method != "POST" {
+        writer.Write(BAD_METHOD)
+        return
+    }
 
     // Welcome message for "/" ..................................................................
 
