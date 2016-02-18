@@ -805,7 +805,7 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
 
     // The orderbook is the only thing the C backend sends in a binary format (this is
     // done for speed reasons, as it's potentially a large amount of data, frequently
-    // requested in normal usage).
+    // requested in normal usage). See comments in the C file for format info.
 
     reader := bufio.NewReader(backend_stdout)
 
@@ -884,17 +884,15 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
     return
 }
 
-/*
-WebSocket strategy:
-
-For each incoming WS connection, the goroutine ws_handler() puts an entry
-in a global struct, storing account, venue, and symbol (some of which
-are optional). It also stores a channel used for communication.
-
-Each C backend sends messages to stderr. There is one goroutine per
-backend -- ws_controller() -- that reads these messages and passes them
-on via the channels (only sending to the correct clients).
-*/
+// WebSocket strategy:
+//
+// For each incoming WS connection, the goroutine ws_handler() puts an entry
+// in a global struct, storing account, venue, and symbol (some of which
+// are optional). It also stores a channel used for communication.
+//
+// Each C backend sends messages to stderr. There is one goroutine per
+// backend -- ws_controller() -- that reads these messages and passes them
+// on via the channels (only sending to the correct clients).
 
 func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
