@@ -379,70 +379,69 @@ func main_handler(writer http.ResponseWriter, request * http.Request) {
 
     // Status and cancel.........................................................................
 
-    if len(pathlist) == 8 {
-        if pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" {
-            venue := pathlist[3]
-            symbol := pathlist[5]
+    if (len(pathlist) == 8 && pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders") ||
+       (len(pathlist) == 9 && pathlist[2] == "venues" && pathlist[4] == "stocks" && pathlist[6] == "orders" && pathlist[8] == "cancel") {
+        venue := pathlist[3]
+        symbol := pathlist[5]
 
-            id, err := strconv.Atoi(pathlist[7])
-            if err != nil {
-                writer.Write(BAD_ORDER)
-                return
-            }
-
-            // In this instance, the web-handler needs to contact the book for info and NOT
-            // send that on to the client. Once we have the info we can make the real request.
-
-            command := "__ACC_FROM_ID__ " + strconv.Itoa(id)
-            result_chan := make(chan []byte)
-
-            msg := Command{
-                ResponseChan: result_chan,
-                Venue: venue,
-                Symbol: symbol,
-                Command: command,
-                CreateIfNeeded: false,
-            }
-            GlobalCommandChan <- msg
-            res1 := <- result_chan
-
-            // If the book didn't exist we will receive one of these replies...
-            if bytes.Equal(res1, UNKNOWN_VENUE) || bytes.Equal(res1, UNKNOWN_SYMBOL) {
-                writer.Write(STATUS_ON_UNKNOWN)
-                return
-            }
-
-            res1 = bytes.Trim(res1, " \t\n\r")
-            reply_list := bytes.Split(res1, []byte(" "))
-            err_string, account := string(reply_list[0]), string(reply_list[1])
-
-            if err_string == "ERROR" {
-                writer.Write(UNKNOWN_ORDER)
-                return
-            }
-
-            if AuthMode {
-                if Auth[account] != request_api_key || Auth[account] == "" {
-                    writer.Write(AUTH_FAILURE)
-                    return
-                }
-            }
-
-            if request.Method == "DELETE" {
-                command = fmt.Sprintf("CANCEL %d", id)
-            } else {
-                command = fmt.Sprintf("STATUS %d", id)
-            }
-
-            msg = Command{
-                Venue: venue,
-                Symbol: symbol,
-                Command: command,
-                CreateIfNeeded: false,
-            }
-            relay(msg, writer)
+        id, err := strconv.Atoi(pathlist[7])
+        if err != nil {
+            writer.Write(BAD_ORDER)
             return
         }
+
+        // In this instance, the web-handler needs to contact the book for info and NOT
+        // send that on to the client. Once we have the info we can make the real request.
+
+        command := "__ACC_FROM_ID__ " + strconv.Itoa(id)
+        result_chan := make(chan []byte)
+
+        msg := Command{
+            ResponseChan: result_chan,
+            Venue: venue,
+            Symbol: symbol,
+            Command: command,
+            CreateIfNeeded: false,
+        }
+        GlobalCommandChan <- msg
+        res1 := <- result_chan
+
+        // If the book didn't exist we will receive one of these replies...
+        if bytes.Equal(res1, UNKNOWN_VENUE) || bytes.Equal(res1, UNKNOWN_SYMBOL) {
+            writer.Write(STATUS_ON_UNKNOWN)
+            return
+        }
+
+        res1 = bytes.Trim(res1, " \t\n\r")
+        reply_list := bytes.Split(res1, []byte(" "))
+        err_string, account := string(reply_list[0]), string(reply_list[1])
+
+        if err_string == "ERROR" {
+            writer.Write(UNKNOWN_ORDER)
+            return
+        }
+
+        if AuthMode {
+            if Auth[account] != request_api_key || Auth[account] == "" {
+                writer.Write(AUTH_FAILURE)
+                return
+            }
+        }
+
+        if request.Method == "DELETE" || (request.Method == "POST" && len(pathlist) == 9) {
+            command = fmt.Sprintf("CANCEL %d", id)
+        } else {
+            command = fmt.Sprintf("STATUS %d", id)
+        }
+
+        msg = Command{
+            Venue: venue,
+            Symbol: symbol,
+            Command: command,
+            CreateIfNeeded: false,
+        }
+        relay(msg, writer)
+        return
     }
 
     // Order placing.............................................................................
@@ -884,7 +883,7 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
     return
 }
 
-// WebSocket strategy:
+// WebSocket strategy:  http://www.gorillatoolkit.org/pkg/websocket
 //
 // For each incoming WS connection, the goroutine ws_handler() puts an entry
 // in a global struct, storing account, venue, and symbol (some of which
@@ -896,7 +895,7 @@ func handle_binary_orderbook_response(backend_stdout io.ReadCloser, venue string
 
 func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
-    // http://www.gorillatoolkit.org/pkg/websocket
+    // Each time the /ob/api/ws URL is hit, this is called as a new goroutine.
 
     conn, err := Upgrader.Upgrade(writer, request, nil)
     if err != nil {
@@ -969,7 +968,9 @@ func ws_handler(writer http.ResponseWriter, request * http.Request) {
 
 func ws_controller(venue string, symbol string, backend_stderr io.ReadCloser) {
 
-    // See comments above for WebSocket strategy.
+    // See comments above for WebSocket strategy. This goroutine is responsible
+    // for reading the stderr of a single C backend (i.e. a single book). It
+    // then passes WebSocket messages on to the relevant connections.
 
     scanner := bufio.NewScanner(backend_stderr)
 
