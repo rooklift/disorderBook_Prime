@@ -33,8 +33,8 @@ type OrderStruct struct {
     Direction           string       `json:"direction"`
     OrderType           string       `json:"orderType"`
     Account             string       `json:"account"`
-    Qty                 int32        `json:"qty"`
-    Price               int32        `json:"price"`
+    Qty                 int32        `json:"qty"`       // int32 is what the backend likes,
+    Price               int32        `json:"price"`     // official uses uint32 I think.
 }
 
 type OptionsStruct struct {

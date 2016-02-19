@@ -9,3 +9,4 @@ lib/
 *.py
 *.bat
 *.exe
+deprecated/
